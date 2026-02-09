@@ -96,7 +96,7 @@ class LaTeXGenerator:
     {LANGUAGES_SECTION}
 
     {INTERESTS_SECTION}
-    
+
     \end{document}
     """
 
