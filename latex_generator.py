@@ -224,24 +224,6 @@ class LaTeXGenerator:
             return ''
 
         section = r"""\section{Образование}
-  \resumeSubHeadingListStart
-    \resumeSubheading
-      {""" + self._escape_latex(data.get('university', '')) + r"""}{""" + self._escape_latex(
-            data.get('study_period', '')) + r"""}
-      {""" + self._escape_latex(data.get('degree', '')) + r"""}"""
-
-        section += r"""
-  \resumeSubHeadingListEnd
-
-"""
-        return section
-
-    def _generate_education(self, data):
-        """Генерация секции образования"""
-        if not data.get('university'):
-            return ''
-
-        section = r"""\section{Образование}
       \resumeSubHeadingListStart
         \resumeSubheading
           {""" + self._escape_latex(data.get('university', '')) + r"""}{""" + self._escape_latex(
@@ -401,3 +383,39 @@ class LaTeXGenerator:
                 )
 
         return text
+
+    def _generate_experience(self, data, keywords):
+        """Генерация секции опыта работы"""
+        experiences = data.get('experiences', [])
+        if not experiences:
+            return ''
+
+        section = r"""\section{Опыт работы}
+  \resumeSubHeadingListStart
+"""
+
+        for exp in experiences:
+            section += r"""    \resumeSubheading
+      {""" + exp.get('position', '') + r"""}{""" + exp.get('work_period', '') + r"""}
+      {""" + exp.get('company', '') + r"""}{}
+      \resumeItemListStart
+"""
+            # Разбиваем responsibilities на пункты
+            resp_text = exp.get('responsibilities', '')
+            responsibilities = [r.strip() for r in resp_text.split('\n') if r.strip() and r.strip().startswith('-')]
+
+            for resp in responsibilities:
+                resp_clean = resp.lstrip('-').strip()
+                # Подсвечиваем ключевые слова
+                if keywords:
+                    resp_clean = self._highlight_keywords(resp_clean, keywords)
+                section += r"""        \resumeItem{""" + resp_clean + r"""}
+"""
+
+            section += r"""      \resumeItemListEnd
+"""
+
+        section += r"""  \resumeSubHeadingListEnd
+
+"""
+        return section
