@@ -59,6 +59,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user.id)
     session['username'] = user.username
 
+    # Сбрасываем режим редактирования если был
+    session['editing_mode'] = False
+    session['editing_section_id'] = None
+
     welcome = f"""<b>👋 Привет, {user.first_name}!</b>
 
 Я помогу тебе создать профессиональное резюме, адаптированное под конкретную вакансию.
@@ -66,13 +70,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 <b>🎯 Как это работает:</b>
 1️⃣ Ответишь на вопросы о себе (10-15 мин)
 2️⃣ Пришлешь текст вакансии
-3️⃣ Получишь готовое резюме в LaTeX формате
+3️⃣ Получишь готовое резюме в PDF
 
 <b>✨ Особенности:</b>
 - AI-анализ вакансии с Google Gemini
 - Автоматическая подсветка важных навыков
 - Возможность редактировать разделы
-- Красивое LaTeX-оформление
 
 Готов начать? 🚀"""
 
@@ -322,7 +325,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     session = get_user_session(user_id)
     text = update.message.text
 
-    # Проверяем состояние
     if session.get('waiting_for') == 'vacancy':
         return await process_vacancy(update, context)
 
@@ -347,7 +349,7 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         session[question['key']] = text
 
-    # История для возврата назад
+    # История
     if not session.get('editing_mode'):
         session['history'].append({
             'section': section_key,
@@ -355,45 +357,43 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
             'value': text
         })
 
-    # Если режим редактирования - сразу возвращаемся к редактору после завершения раздела
+    # ИСПРАВЛЕНИЕ: режим редактирования - возврат после завершения ЭТОГО раздела
     if session.get('editing_mode'):
         session['current_question'] += 1
 
-        # Проверяем завершили ли редактирование раздела
-        if section.get('multiple'):
-            # Для multiple разделов - сохраняем и возвращаемся
-            items_key = section_key + 's'
-            if items_key not in session:
-                session[items_key] = []
+        # Проверяем завершили ли ВСЕ вопросы в редактируемом разделе
+        if session['current_question'] >= len(questions):
+            # Сохраняем для multiple разделов
+            if section.get('multiple'):
+                items_key = section_key + 's'
+                if items_key not in session:
+                    session[items_key] = []
 
-            current_item = session.get('current_item', {})
-            if current_item:
-                # Обновляем существующий или добавляем новый
-                if session.get('editing_item_index') is not None:
-                    session[items_key][session['editing_item_index']] = current_item
-                else:
-                    session[items_key].append(current_item)
-                session['current_item'] = {}
+                current_item = session.get('current_item', {})
+                if current_item and any(current_item.values()):
+                    # Заменяем или добавляем
+                    if session.get('editing_item_index') is not None:
+                        session[items_key][session['editing_item_index']] = current_item
+                    else:
+                        session[items_key].append(current_item)
+                    session['current_item'] = {}
 
+            # ВОЗВРАЩАЕМСЯ К РЕДАКТОРУ
             session['editing_mode'] = False
+            session['editing_section_id'] = None
             session['editing_item_index'] = None
-            await update.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
-                parse_mode=ParseMode.HTML
-            )
-            return await show_sections_editor(update, context)
-        elif session['current_question'] >= len(questions):
-            session['editing_mode'] = False
+
             await update.message.reply_text(
                 "✅ <b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
             return await show_sections_editor(update, context)
         else:
+            # Продолжаем вопросы в этом разделе
             await ask_current_question(update, context)
             return COLLECTING_DATA
 
-    # Переход к следующему вопросу
+    # Обычный режим
     session['current_question'] += 1
     await ask_current_question(update, context)
 
@@ -479,21 +479,18 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     section_key = session['current_section']
 
-    # ВАЖНО: Сохраняем текущий элемент ПЕРЕД добавлением нового
+    # ИСПРАВЛЕНИЕ: правильное название ключа
+    items_key = section_key + 's'  # 'experience' + 's' = 'experiences', 'project' + 's' = 'projects'
+
+    # Сохраняем текущий элемент
     current_item = session.get('current_item', {})
-    if current_item:
-        items_key = section_key + 's'
+    if current_item and any(current_item.values()):
         if items_key not in session:
             session[items_key] = []
+        session[items_key].append(current_item)
+        logger.info(f"✅ Saved to {items_key}: {current_item}")
 
-        # Проверяем что элемент не пустой
-        if any(current_item.values()):
-            session[items_key].append(current_item)
-            print(f"Saved item to {items_key}: {current_item}")  # Debug
-
-        session['current_item'] = {}
-
-    # Начинаем заново с первого вопроса этой секции
+    session['current_item'] = {}
     session['current_question'] = 0
 
     await query.message.reply_text(
@@ -511,28 +508,26 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if query else update.message.from_user.id
     session = get_user_session(user_id)
 
-    # Деактивируем кнопки
     if query:
         try:
             await query.edit_message_reply_markup(reply_markup=None)
         except:
             pass
 
-    # ВАЖНО: Сохраняем текущий элемент если есть (для опыта/проектов)
+    # ИСПРАВЛЕНИЕ: правильное сохранение последнего элемента
     if session.get('current_item'):
         section_key = session['current_section']
         items_key = section_key + 's'
 
         current_item = session['current_item']
-        if any(current_item.values()):  # Проверяем что не пустой
+        if any(current_item.values()):
             if items_key not in session:
                 session[items_key] = []
             session[items_key].append(current_item)
-            print(f"Saved item in next_section to {items_key}: {current_item}")  # Debug
+            logger.info(f"✅ Saved in next_section to {items_key}: {current_item}")
 
         session['current_item'] = {}
 
-    # Определяем следующую секцию
     sections_order = ['personal', 'education', 'experience', 'projects', 'skills', 'additional']
     current_idx = sections_order.index(session['current_section']) if session[
                                                                           'current_section'] in sections_order else -1
@@ -543,7 +538,6 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await ask_current_question(update, context)
         return COLLECTING_DATA
     else:
-        # Все секции пройдены - запрашиваем вакансию
         return await request_vacancy(update, context)
 
 
@@ -580,11 +574,15 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session['vacancy_text'] = vacancy_text
     session['waiting_for'] = None
 
-    # Анализ вакансии
     analyzing_msg = await update.message.reply_text(
         "🔍 <b>Анализирую вакансию...</b>",
         parse_mode=ParseMode.HTML
     )
+
+    # ТЕСТ: Проверяем работает ли Gemini
+    logger.info(f"🔍 Starting vacancy analysis")
+    logger.info(f"✅ AI model available: {ai.model is not None}")
+    logger.info(f"✅ API key configured: {bool(config.GOOGLE_API_KEY)}")
 
     try:
         keywords = ai.extract_keywords_from_vacancy(vacancy_text)
@@ -592,18 +590,20 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await analyzing_msg.delete()
 
-        # Результат анализа
         result_msg = ai.format_keywords_message(keywords)
         await update.message.reply_text(result_msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         await analyzing_msg.delete()
-        logger.error(f"AI analysis error: {e}")
+        logger.error(f"❌ AI analysis error: {e}")
         await update.message.reply_text(
-            "⚠️ Не удалось подключиться к AI (проблема с VPN или интернетом).\n\n"
-            "Продолжаем без AI-анализа.",
+            f"⚠️ Ошибка AI: {str(e)[:100]}\n\nИспользуем упрощенный анализ.",
             parse_mode=ParseMode.HTML
         )
-        session['vacancy_keywords'] = {'technical': [], 'soft': [], 'keywords': []}
+        # Используем fallback
+        keywords = ai._fallback_extraction(vacancy_text)
+        session['vacancy_keywords'] = keywords
+        result_msg = ai.format_keywords_message(keywords)
+        await update.message.reply_text(result_msg, parse_mode=ParseMode.HTML)
 
     # Сразу переходим к редактированию
     session['template'] = 'Современный (Jake\'s Resume)'
@@ -682,48 +682,56 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     user_id = update.effective_user.id
     session = get_user_session(user_id)
 
-    # Деактивируем кнопки
     try:
         await query.edit_message_reply_markup(reply_markup=None)
     except:
         pass
 
-    # Показываем текущие данные
+    # Показываем текущие данные с деталями
     current_data = []
     if section_id == 'education':
         if session.get('university'):
-            current_data.append(f"Университет: {session.get('university')}")
-            current_data.append(f"Специальность: {session.get('degree')}")
-            current_data.append(f"Период: {session.get('study_period')}")
+            current_data.append(f"🎓 {session.get('university')}")
+            current_data.append(f"   Специальность: {session.get('degree')}")
+            current_data.append(f"   Период: {session.get('study_period')}")
     elif section_id == 'experience':
         for i, exp in enumerate(session.get('experiences', []), 1):
-            current_data.append(f"{i}. {exp.get('position')} в {exp.get('company')}")
+            current_data.append(f"\n{i}. 💼 {exp.get('position')}")
+            current_data.append(f"   {exp.get('company')} | {exp.get('work_period')}")
+            resp = exp.get('responsibilities', '')[:100]
+            current_data.append(f"   {resp}...")
     elif section_id == 'projects':
         for i, proj in enumerate(session.get('projects', []), 1):
-            current_data.append(f"{i}. {proj.get('project_name')}")
+            current_data.append(f"\n{i}. 🚀 {proj.get('project_name')}")
+            desc = proj.get('project_description', '')[:100]
+            current_data.append(f"   {desc}...")
     elif section_id == 'skills':
-        current_data.append(f"Технические: {session.get('technical_skills', '')[:50]}...")
+        current_data.append(f"💻 {session.get('technical_skills', '')}")
+        if session.get('soft_skills'):
+            current_data.append(f"🤝 {session.get('soft_skills', '')}")
     elif section_id == 'achievements':
         ach = session.get('achievements', '')
         if ach:
-            current_data.append(f"{ach[:100]}...")
+            for line in ach.split('\n')[:3]:
+                if line.strip():
+                    current_data.append(f"🏆 {line.strip()}")
     elif section_id == 'languages':
-        current_data.append(session.get('languages', ''))
+        current_data.append(f"🌍 {session.get('languages', '')}")
     elif section_id == 'interests':
-        current_data.append(session.get('interests', ''))
+        current_data.append(f"🎯 {session.get('interests', '')}")
 
     msg = "<b>✏️ Редактирование раздела</b>\n\n"
     if current_data:
-        msg += "<b>Текущие данные:</b>\n"
+        msg += "<b>📋 Текущие данные:</b>\n"
         msg += "\n".join(current_data)
         msg += "\n\n"
-    msg += "Отправь новые данные или нажми Пропустить для сохранения текущих"
+    msg += "<i>Отправь новые данные для замены или нажми Пропустить для сохранения текущих</i>"
 
-    # Сохраняем что мы редактируем конкретный раздел
+    # ИСПРАВЛЕНИЕ: специальный режим для редактирования ТОЛЬКО этого раздела
     session['editing_mode'] = True
     session['editing_section_id'] = section_id
+    session['editing_complete_after'] = section_id  # НОВОЕ: отметка что закончить после этого раздела
 
-    # Устанавливаем текущую секцию для редактирования
     section_map = {
         'education': ('education', 0),
         'experience': ('experience', 0),
@@ -739,7 +747,6 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
         session['current_section'] = section_key
         session['current_question'] = question_offset
 
-        # Для additional находим правильный вопрос
         if section_key == 'additional':
             section_data = config.QUESTIONS_STRUCTURE.get('additional')
             if section_data:

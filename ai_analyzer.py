@@ -103,10 +103,10 @@ SOFT SKILLS:
         """Улучшенная экстракция без AI"""
         text_lower = text.lower()
 
-        # Максимально расширенный список
         technical_skills = {
-            # Программирование
-            'Python', 'JavaScript', 'Java', 'C++', 'C#', 'C', 'TypeScript', 'Go', 'Rust',
+            # Программирование - ВАЖНО: добавляем варианты написания
+            'Python', 'JavaScript', 'Java', 'C++', 'C\+\+', 'Cpp', 'C#', 'C Sharp', 'C',
+            'TypeScript', 'Go', 'Golang', 'Rust',
             'Ruby', 'PHP', 'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'Dart', 'Lua',
 
             # Фреймворки
@@ -121,54 +121,50 @@ SOFT SKILLS:
             'Docker', 'Kubernetes', 'Git', 'GitLab', 'GitHub', 'Jenkins', 'CI/CD',
             'AWS', 'Azure', 'GCP', 'Terraform', 'Ansible', 'Linux',
 
-            # Дизайн и CAD
+            # Библиотеки
+            'mavsdk', 'opencv', 'OpenCV', 'ardupilot', 'ArduPilot',
+            'Raspberry Pi', 'Orange Pi', 'Nvidia Jetson', 'Jetson',
+
+            # Дизайн
             'AutoCAD', 'Photoshop', 'Illustrator', 'Figma', 'Sketch', 'Adobe XD',
-            'InDesign', 'Blender', '3ds Max', 'Maya', 'SketchUp', 'Revit',
-            'ArchiCAD', 'SolidWorks', 'CATIA', 'Procreate', 'After Effects',
-            'Premiere Pro', 'Lightroom', 'CorelDRAW', 'Affinity Designer',
 
             # Другое
             'REST API', 'GraphQL', 'Microservices', 'Machine Learning',
-            'Data Science', 'Excel', 'Power BI', 'Tableau', 'SAP', 'Unity',
-            'VR', 'AR', '3D моделирование', 'рендеринг', 'визуализация'
+            'нейронные сети', 'нейросети', 'криптография'
         }
 
-        # Расширенные soft skills + специфичные для дизайна
-        soft_skills = {
-            'коммуникация', 'communication', 'работа в команде', 'teamwork',
-            'лидерство', 'leadership', 'problem solving', 'аналитическое мышление',
-            'креативность', 'creativity', 'внимание к деталям', 'attention to detail',
-            'тайм-менеджмент', 'time management', 'презентации', 'presentation',
-            'английский', 'english', 'стрессоустойчивость', 'stress resistance',
-            'переговоры', 'negotiations', 'продажи', 'sales',
-            'клиентоориентированность', 'работа с клиентами',
-            'авторский надзор', 'ведение проекта', 'комплектация',
-            'консультирование', 'курирование', 'координация'
-        }
+        # Специальная обработка для C++
+        if 'c++' in text_lower or 'cpp' in text_lower or 'c\+\+' in text_lower:
+            found_technical = ['C++']
+        else:
+            found_technical = []
 
-        # Поиск навыков
-        found_technical = []
-        found_soft = []
-
+        # Обычный поиск для остальных
         for skill in technical_skills:
-            pattern = r'\b' + re.escape(skill.lower()) + r'\b'
-            if re.search(pattern, text_lower):
-                found_technical.append(skill)
+            if skill == 'C++' or skill == 'C\+\+' or skill == 'Cpp':
+                continue  # Уже обработали выше
 
-        for skill in soft_skills:
-            if skill.lower() in text_lower:
-                found_soft.append(skill)
+            # Специальная обработка для однобуквенных (C, R)
+            if skill in ['C', 'R']:
+                # Ищем как отдельное слово
+                pattern = r'\b' + re.escape(skill) + r'\b'
+                if re.search(pattern, text, re.IGNORECASE):
+                    if skill not in found_technical:
+                        found_technical.append(skill)
+            else:
+                pattern = r'\b' + re.escape(skill.lower()) + r'\b'
+                if re.search(pattern, text_lower):
+                    if skill not in found_technical:
+                        found_technical.append(skill)
 
-        # Специальные паттерны для дизайна интерьера
-        if 'дизайн' in text_lower and 'интерьер' in text_lower:
-            if 'AutoCAD' not in found_technical:
-                found_technical.insert(0, 'AutoCAD')
-            if 'Photoshop' not in found_technical:
-                found_technical.insert(1, 'Photoshop')
-            if 'работа с клиентами' not in found_soft:
-                found_soft.append('работа с клиентами')
-            if 'креативность' not in found_soft:
-                found_soft.append('креативность')
+        # Soft skills
+        soft_skills_list = [
+            'коммуникация', 'работа в команде', 'teamwork',
+            'лидерство', 'leadership', 'problem solving',
+            'параллельные вычисления', 'асинхронные вычисления'
+        ]
+
+        found_soft = [s for s in soft_skills_list if s.lower() in text_lower]
 
         found_technical = list(dict.fromkeys(found_technical))[:15]
         found_soft = list(dict.fromkeys(found_soft))[:8]
