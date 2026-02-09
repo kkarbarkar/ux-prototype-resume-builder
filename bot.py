@@ -12,6 +12,9 @@ from latex_generator import LaTeXGenerator
 from ai_analyzer import AIAnalyzer
 from keyboards import Keyboards
 import io
+import http.server
+import socketserver
+import os
 
 # Логирование
 logging.basicConfig(
@@ -1228,6 +1231,11 @@ def main():
         drop_pending_updates=True  # Игнорируем старые обновления
     )
 
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        httpd.serve_forever()
 
 if __name__ == '__main__':
     main()

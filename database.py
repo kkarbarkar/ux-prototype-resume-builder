@@ -1,9 +1,9 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import config
+import os
 import json
-
+from oauth2client.service_account import ServiceAccountCredentials
 
 class Database:
     def __init__(self):
@@ -11,12 +11,21 @@ class Database:
             'https://spreadsheets.google.com/feeds',
             'https://www.googleapis.com/auth/drive'
         ]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(
-            config.CREDENTIALS_FILE, scope
-        )
+        creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+
+        if creds_json:
+            info = json.loads(creds_json)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(info, scope)
+        else:
+            # Если переменной нет, ищем файл (для тестов на компе)
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                config.CREDENTIALS_FILE, scope
+            )
+
         self.client = gspread.authorize(creds)
         self.spreadsheet = self.client.open_by_key(config.SPREADSHEET_ID)
         self._init_sheets()
+
 
     def _init_sheets(self):
         """Инициализация листов"""
