@@ -19,7 +19,7 @@ class AIAnalyzer:
         if GEMINI_AVAILABLE and config.GOOGLE_API_KEY:
             try:
                 genai.configure(api_key=config.GOOGLE_API_KEY)
-                self.model = genai.GenerativeModel('gemini-pro')
+                self.model = genai.GenerativeModel('gemini-1.5-flash')
                 print("✅ Google Gemini подключен")
             except Exception as e:
                 print(f"⚠️ Ошибка подключения Gemini: {e}")
