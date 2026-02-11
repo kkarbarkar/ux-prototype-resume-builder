@@ -26,12 +26,36 @@ class AIAnalyzer:
             try:
                 genai.configure(api_key=config.GOOGLE_API_KEY)
                 preferred = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-                self.model_candidates = [
-                    preferred,
-                    'gemini-1.5-flash-latest',
-                    'gemini-1.0-pro',
-                    'gemini-pro'
-                ]
+                available_models = self._get_available_models()
+                if available_models:
+                    normalized = [self._normalize_model_name(name) for name in available_models]
+                    unique_normalized = []
+                    for name in normalized:
+                        if name not in unique_normalized:
+                            unique_normalized.append(name)
+                    filtered_models = [
+                        name for name in unique_normalized if self._is_supported_model_name(name)
+                    ]
+                    if preferred in filtered_models:
+                        self.model_candidates = [preferred] + [
+                            name for name in filtered_models if name != preferred
+                        ]
+                    else:
+                        self.model_candidates = filtered_models
+                else:
+                    fallback_candidates = [
+                        preferred,
+                        'gemini-1.5-flash',
+                        'gemini-1.5-pro',
+                        'gemini-1.0-pro',
+                        'gemini-pro'
+                    ]
+                    self.model_candidates = []
+                    for name in fallback_candidates:
+                        if name not in self.model_candidates and self._is_supported_model_name(name):
+                            self.model_candidates.append(name)
+                if not self.model_candidates:
+                    self.model_candidates = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
                 self.model_name = self.model_candidates[0]
                 self.model = genai.GenerativeModel(self.model_name)
                 self.logger.info("✅ Google Gemini подключен: %s", self.model_name)
@@ -78,29 +102,69 @@ SOFT SKILLS:
 - слово1
 - слово2"""
 
-        try:
-            response = self.model.generate_content(prompt)
-            return self._parse_ai_response(response.text, vacancy_text)
-        except Exception as e:
-            error_text = str(e)
-            if self._should_rotate_model(error_text):
-                self._rotate_model()
+        attempts = max(1, len(self.model_candidates))
+        last_error = None
+        for _ in range(attempts):
+            try:
                 response = self.model.generate_content(prompt)
                 return self._parse_ai_response(response.text, vacancy_text)
-            raise
+            except Exception as e:
+                last_error = e
+                error_text = str(e)
+                if self._should_rotate_model(error_text):
+                    if self._rotate_model(disable_current=True):
+                        continue
+                raise
+        if last_error:
+            raise last_error
+        raise RuntimeError("Gemini extraction failed without explicit exception")
 
     def _should_rotate_model(self, error_text):
         return 'not found' in error_text.lower() or '404' in error_text
 
-    def _rotate_model(self):
+    def _rotate_model(self, disable_current=False):
         if not self.model_candidates:
-            return
-        self.model_index += 1
-        if self.model_index >= len(self.model_candidates):
+            return False
+        if disable_current and self.model_name in self.model_candidates:
+            self.model_candidates = [name for name in self.model_candidates if name != self.model_name]
+            if not self.model_candidates:
+                return False
             self.model_index = 0
+        else:
+            self.model_index += 1
+            if self.model_index >= len(self.model_candidates):
+                self.model_index = 0
         self.model_name = self.model_candidates[self.model_index]
         self.model = genai.GenerativeModel(self.model_name)
         self.logger.warning("🔁 Переключаю модель Gemini на %s", self.model_name)
+        return True
+
+    def _normalize_model_name(self, name):
+        if name.startswith('models/'):
+            return name[len('models/'):]
+        return name
+
+    def _is_supported_model_name(self, name):
+        lowered = name.lower()
+        # Aliases with "-latest" are unstable across API versions and often return 404.
+        return not lowered.endswith('-latest')
+
+    def _get_available_models(self):
+        try:
+            models = []
+            for model in genai.list_models():
+                methods = getattr(model, 'supported_generation_methods', None)
+                if methods is None:
+                    methods = getattr(model, 'supportedGenerationMethods', None)
+                methods = methods or []
+                if any('generatecontent' in method.lower() for method in methods):
+                    name = getattr(model, 'name', None)
+                    if name:
+                        models.append(name)
+            return models
+        except Exception as e:
+            self.logger.warning("⚠️ Не удалось получить список моделей Gemini: %s", e)
+            return []
 
     def _parse_ai_response(self, text, original_vacancy):
         """Парсинг ответа AI с проверкой"""
@@ -142,7 +206,7 @@ SOFT SKILLS:
 
         technical_skills = {
             # Программирование - ВАЖНО: добавляем варианты написания
-            'Python', 'JavaScript', 'Java', 'C++', 'C\+\+', 'Cpp', 'C#', 'C Sharp', 'C',
+            'Python', 'JavaScript', 'Java', 'C++', 'C\\+\\+', 'Cpp', 'C#', 'C Sharp', 'C',
             'TypeScript', 'Go', 'Golang', 'Rust',
             'Ruby', 'PHP', 'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'Dart', 'Lua',
 
@@ -183,14 +247,14 @@ SOFT SKILLS:
         }
 
         # Специальная обработка для C++
-        if 'c++' in text_lower or 'cpp' in text_lower or 'c\+\+' in text_lower:
+        if 'c++' in text_lower or 'cpp' in text_lower or 'c\\+\\+' in text_lower:
             found_technical = ['C++']
         else:
             found_technical = []
 
         # Обычный поиск для остальных
         for skill in technical_skills:
-            if skill == 'C++' or skill == 'C\+\+' or skill == 'Cpp':
+            if skill == 'C++' or skill == 'C\\+\\+' or skill == 'Cpp':
                 continue  # Уже обработали выше
 
             # Специальная обработка для однобуквенных (C, R)

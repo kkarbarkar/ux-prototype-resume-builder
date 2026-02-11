@@ -5,6 +5,7 @@ from telegram.ext import (
     filters, ContextTypes, ConversationHandler
 )
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from datetime import datetime
 import config
 from database import Database
@@ -109,6 +110,48 @@ def _reset_resume_data(session):
     session['current_item'] = {}
 
 
+IGNORABLE_REPLY_MARKUP_ERRORS = (
+    "message is not modified",
+    "message to edit not found",
+    "message can't be edited",
+    "there is no reply markup in the message",
+    "query is too old",
+)
+
+
+def _is_ignorable_reply_markup_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(pattern in text for pattern in IGNORABLE_REPLY_MARKUP_ERRORS)
+
+
+async def clear_reply_markup_from_query(query):
+    if not query:
+        return
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except BadRequest as exc:
+        if not _is_ignorable_reply_markup_error(exc):
+            logger.warning("⚠️ Не удалось снять клавиатуру: %s", exc)
+    except Exception as exc:
+        logger.warning("⚠️ Неожиданная ошибка при снятии клавиатуры: %s", exc)
+
+
+async def clear_reply_markup_by_message(context, chat_id, message_id):
+    if not chat_id or not message_id:
+        return
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=None
+        )
+    except BadRequest as exc:
+        if not _is_ignorable_reply_markup_error(exc):
+            logger.warning("⚠️ Не удалось снять клавиатуру у сообщения %s: %s", message_id, exc)
+    except Exception as exc:
+        logger.warning("⚠️ Неожиданная ошибка при снятии клавиатуры у сообщения %s: %s", message_id, exc)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало работы"""
     user = update.effective_user
@@ -149,10 +192,7 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
     user_id = update.effective_user.id
     session = get_user_session(user_id)
 
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     await query.message.reply_text(
         "⏳ <b>Генерирую резюме...</b>",
@@ -243,10 +283,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await start_feedback(update, context)
     elif data == 'skip_comment':
         session['feedback']['comment'] = ''
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except:
-            pass
+        await clear_reply_markup_from_query(query)
         return await finish_feedback(update, context)
 
     # Навигация
@@ -287,10 +324,7 @@ async def start_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     # Деактивируем кнопки главного меню
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     # Сбрасываем состояние
     _reset_resume_data(session)
@@ -316,14 +350,7 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
 
     last_question_id = session.get('last_question_message_id')
     if last_question_id:
-        try:
-            await context.bot.edit_message_reply_markup(
-                chat_id=update.effective_chat.id,
-                message_id=last_question_id,
-                reply_markup=None
-            )
-        except:
-            pass
+        await clear_reply_markup_by_message(context, update.effective_chat.id, last_question_id)
 
     section_key = session['current_section']
     question_idx = session['current_question']
@@ -400,14 +427,7 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     last_question_id = session.get('last_question_message_id')
     if last_question_id:
-        try:
-            await context.bot.edit_message_reply_markup(
-                chat_id=update.effective_chat.id,
-                message_id=last_question_id,
-                reply_markup=None
-            )
-        except:
-            pass
+        await clear_reply_markup_by_message(context, update.effective_chat.id, last_question_id)
 
     if session.get('waiting_for') == 'vacancy':
         return await process_vacancy(update, context)
@@ -501,10 +521,7 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     section_key = session['current_section']
     section = config.QUESTIONS_STRUCTURE.get(section_key)
@@ -563,10 +580,7 @@ async def go_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     if not session.get('history'):
         await query.message.reply_text("Это первый вопрос!")
@@ -591,10 +605,7 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     section_key = session['current_section']
 
@@ -627,10 +638,7 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     if query:
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except:
-            pass
+        await clear_reply_markup_from_query(query)
 
     # ИСПРАВЛЕНИЕ: правильное сохранение последнего элемента
     if session.get('current_item'):
@@ -807,10 +815,7 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     user_id = update.effective_user.id
     session = get_user_session(user_id)
 
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     # Показываем текущие данные с деталями
     current_data = []
@@ -893,10 +898,7 @@ async def delete_section(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     # Очищаем данные раздела
     section_keys_map = {
@@ -935,10 +937,7 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     creating_msg = await query.message.reply_text(
         "⏳ <b>Создаю твое резюме...</b>",
@@ -1095,10 +1094,7 @@ async def save_rating(update: Update, context: ContextTypes.DEFAULT_TYPE, rating
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     idx = session.get('feedback_question', 0)
     question = config.FEEDBACK_QUESTIONS[idx]
@@ -1119,10 +1115,7 @@ async def save_time(update: Update, context: ContextTypes.DEFAULT_TYPE, time_cod
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     time_map = {
         '15': 'Менее 15 минут',
@@ -1150,10 +1143,7 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, ans
     session = get_user_session(user_id)
 
     # Деактивируем кнопки
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except:
-        pass
+    await clear_reply_markup_from_query(query)
 
     idx = session.get('feedback_question', 0)
     question = config.FEEDBACK_QUESTIONS[idx]
