@@ -52,6 +52,9 @@ def get_user_session(user_id):
         }
     return user_sessions[user_id]
 
+def _items_key(section_key):
+    return section_key if section_key.endswith('s') else section_key + 's'
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало работы"""
@@ -271,7 +274,7 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
         # Проверяем, нужно ли добавить еще элементов (для опыта/проектов)
         if section.get('multiple'):
             keyboard = kb.add_more_back()
-            items_count = len(session.get(section_key + 's', []))
+            items_count = len(session.get(_items_key(section_key), []))
 
             msg = f"<b>✅ {section['title']}</b>\n\n"
             if items_count > 0:
@@ -306,17 +309,18 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = kb.skip_back()
 
     if update.callback_query:
-        await update.callback_query.message.reply_text(
+        message = await update.callback_query.message.reply_text(
             msg,
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
     else:
-        await update.message.reply_text(
+        message = await update.message.reply_text(
             msg,
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
+    session['last_question_message_id'] = message.message_id
 
 
 async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -324,6 +328,17 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
     text = update.message.text
+
+    last_question_id = session.get('last_question_message_id')
+    if last_question_id:
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=update.effective_chat.id,
+                message_id=last_question_id,
+                reply_markup=None
+            )
+        except:
+            pass
 
     if session.get('waiting_for') == 'vacancy':
         return await process_vacancy(update, context)
@@ -365,7 +380,7 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
         if session['current_question'] >= len(questions):
             # Сохраняем для multiple разделов
             if section.get('multiple'):
-                items_key = section_key + 's'
+                items_key = _items_key(section_key)
                 if items_key not in session:
                     session[items_key] = []
 
@@ -479,8 +494,7 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     section_key = session['current_section']
 
-    # ИСПРАВЛЕНИЕ: правильное название ключа
-    items_key = section_key + 's'  # 'experience' + 's' = 'experiences', 'project' + 's' = 'projects'
+    items_key = _items_key(section_key)
 
     # Сохраняем текущий элемент
     current_item = session.get('current_item', {})
@@ -517,7 +531,7 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ИСПРАВЛЕНИЕ: правильное сохранение последнего элемента
     if session.get('current_item'):
         section_key = session['current_section']
-        items_key = section_key + 's'
+        items_key = _items_key(section_key)
 
         current_item = session['current_item']
         if any(current_item.values()):

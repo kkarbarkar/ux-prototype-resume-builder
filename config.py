@@ -10,7 +10,7 @@ ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'karbarkarrr')
 # Google
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 CREDENTIALS_FILE = 'credentials.json'
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY', '')
 
 # Структурированные вопросы для сбора данных
 QUESTIONS_STRUCTURE = {

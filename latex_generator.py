@@ -106,8 +106,10 @@ class LaTeXGenerator:
 
         # Личная информация
         latex_content = latex_content.replace('{FULL_NAME}', self._escape_latex(user_data.get('full_name', 'Ваше Имя')))
-        latex_content = latex_content.replace('{EMAIL}', user_data.get('email', 'email@example.com'))
-        latex_content = latex_content.replace('{PHONE}', user_data.get('phone', '+7 999 999-99-99'))
+        email = user_data.get('email', 'email@example.com')
+        phone = user_data.get('phone', '+7 999 999-99-99')
+        latex_content = latex_content.replace('{EMAIL}', self._escape_latex(email))
+        latex_content = latex_content.replace('{PHONE}', self._escape_latex(phone))
 
         # Локация
         location = user_data.get('location', '')
@@ -120,13 +122,13 @@ class LaTeXGenerator:
         links = []
         if user_data.get('linkedin'):
             linkedin = user_data.get('linkedin').replace('https://', '').replace('http://', '')
-            links.append(r'\href{https://' + linkedin + r'}{\underline{LinkedIn}}')
+            links.append(r'\href{https://' + self._escape_latex(linkedin) + r'}{\underline{LinkedIn}}')
         if user_data.get('github'):
             github = user_data.get('github').replace('https://', '').replace('http://', '')
-            links.append(r'\href{https://' + github + r'}{\underline{GitHub}}')
+            links.append(r'\href{https://' + self._escape_latex(github) + r'}{\underline{GitHub}}')
         if user_data.get('portfolio'):
             portfolio = user_data.get('portfolio').replace('https://', '').replace('http://', '')
-            links.append(r'\href{https://' + portfolio + r'}{\underline{Portfolio}}')
+            links.append(r'\href{https://' + self._escape_latex(portfolio) + r'}{\underline{Portfolio}}')
 
         if links:
             latex_content = latex_content.replace('{LINKS}', ' \\\\ ' + r'\small ' + ' $|$ '.join(links))
@@ -175,9 +177,9 @@ class LaTeXGenerator:
                     # Запускаем pdflatex дважды для корректных ссылок
                     for _ in range(2):
                         result = subprocess.run(
-                            ['pdflatex', '-interaction=nonstopmode', '-output-directory', tmpdir, tex_file],
+                            ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory', tmpdir, tex_file],
                             capture_output=True,
-                            timeout=30,
+                            timeout=60,
                             cwd=tmpdir
                         )
 
@@ -396,20 +398,24 @@ class LaTeXGenerator:
 
         for exp in experiences:
             section += r"""    \resumeSubheading
-      {""" + exp.get('position', '') + r"""}{""" + exp.get('work_period', '') + r"""}
-      {""" + exp.get('company', '') + r"""}{}
+      {""" + self._escape_latex(exp.get('position', '')) + r"""}{""" + self._escape_latex(
+                exp.get('work_period', '')) + r"""}
+      {""" + self._escape_latex(exp.get('company', '')) + r"""}{}
       \resumeItemListStart
 """
             # Разбиваем responsibilities на пункты
             resp_text = exp.get('responsibilities', '')
-            responsibilities = [r.strip() for r in resp_text.split('\n') if r.strip() and r.strip().startswith('-')]
+            responsibilities = [r.strip() for r in resp_text.split('\n') if r.strip()]
 
             for resp in responsibilities:
-                resp_clean = resp.lstrip('-').strip()
+                resp_clean = resp.lstrip('-•').strip()
+                if not resp_clean:
+                    continue
+                resp_escaped = self._escape_latex(resp_clean)
                 # Подсвечиваем ключевые слова
                 if keywords:
-                    resp_clean = self._highlight_keywords(resp_clean, keywords)
-                section += r"""        \resumeItem{""" + resp_clean + r"""}
+                    resp_escaped = self._highlight_keywords(resp_escaped, keywords)
+                section += r"""        \resumeItem{""" + resp_escaped + r"""}
 """
 
             section += r"""      \resumeItemListEnd
