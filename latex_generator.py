@@ -174,14 +174,19 @@ class LaTeXGenerator:
 
                 # Компилируем в PDF
                 try:
-                    # Запускаем pdflatex дважды для корректных ссылок
-                    for _ in range(2):
-                        result = subprocess.run(
-                            ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory', tmpdir, tex_file],
-                            capture_output=True,
-                            timeout=60,
-                            cwd=tmpdir
-                        )
+                    result = subprocess.run(
+                        ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory', tmpdir, tex_file],
+                        capture_output=True,
+                        timeout=120,
+                        cwd=tmpdir
+                    )
+                    if result.returncode != 0:
+                        stderr = (result.stderr or b'').decode('utf-8', errors='ignore').strip()
+                        stdout = (result.stdout or b'').decode('utf-8', errors='ignore').strip()
+                        detail = stderr or stdout
+                        if detail:
+                            detail = detail[-400:]
+                        return None, f"Ошибка компиляции: {detail or 'pdflatex exit code'}"
 
                     # Проверяем что PDF создался
                     if os.path.exists(pdf_file):
