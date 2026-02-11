@@ -177,9 +177,14 @@ class LaTeXGenerator:
                     result = subprocess.run(
                         ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory', tmpdir, tex_file],
                         capture_output=True,
-                        timeout=120,
+                        timeout=180,
                         cwd=tmpdir
                     )
+                    if os.path.exists(pdf_file):
+                        with open(pdf_file, 'rb') as f:
+                            pdf_data = f.read()
+                        if pdf_data:
+                            return pdf_data, None
                     if result.returncode != 0:
                         stderr = (result.stderr or b'').decode('utf-8', errors='ignore').strip()
                         stdout = (result.stdout or b'').decode('utf-8', errors='ignore').strip()
@@ -188,13 +193,7 @@ class LaTeXGenerator:
                             detail = detail[-400:]
                         return None, f"Ошибка компиляции: {detail or 'pdflatex exit code'}"
 
-                    # Проверяем что PDF создался
-                    if os.path.exists(pdf_file):
-                        with open(pdf_file, 'rb') as f:
-                            pdf_data = f.read()
-                        return pdf_data, None
-                    else:
-                        return None, "PDF не создался"
+                    return None, "PDF не создался"
 
                 except FileNotFoundError:
                     return None, "pdflatex не установлен"

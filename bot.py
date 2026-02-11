@@ -314,6 +314,17 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id if update.callback_query else update.message.from_user.id
     session = get_user_session(user_id)
 
+    last_question_id = session.get('last_question_message_id')
+    if last_question_id:
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=update.effective_chat.id,
+                message_id=last_question_id,
+                reply_markup=None
+            )
+        except:
+            pass
+
     section_key = session['current_section']
     question_idx = session['current_question']
 
@@ -521,6 +532,15 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML
                 )
                 return await show_sections_editor(update, context)
+        if section_key == session.get('editing_section_id'):
+            session['editing_mode'] = False
+            session['editing_section_id'] = None
+            session['editing_item_index'] = None
+            await query.message.reply_text(
+                "✅ <b>Раздел обновлен!</b>",
+                parse_mode=ParseMode.HTML
+            )
+            return await show_sections_editor(update, context)
 
     # Для секций с multiple - переходим к следующей секции при пропуске первого вопроса
     if section and section.get('multiple') and session['current_question'] == 0:

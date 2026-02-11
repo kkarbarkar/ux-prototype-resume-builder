@@ -138,6 +138,8 @@ SOFT SKILLS:
         """Улучшенная экстракция без AI"""
         text_lower = text.lower()
 
+        key_skills = self._extract_key_skills(text)
+
         technical_skills = {
             # Программирование - ВАЖНО: добавляем варианты написания
             'Python', 'JavaScript', 'Java', 'C++', 'C\+\+', 'Cpp', 'C#', 'C Sharp', 'C',
@@ -150,11 +152,23 @@ SOFT SKILLS:
 
             # Базы данных
             'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Clickhouse',
-            'Kafka', 'RabbitMQ',
+            'Kafka', 'RabbitMQ', 'MS SQL', 'MSSQL', 'BigQuery', 'SQL', 'NoSQL',
 
             # DevOps
             'Docker', 'Kubernetes', 'Git', 'GitLab', 'GitHub', 'Jenkins', 'CI/CD',
             'AWS', 'Azure', 'GCP', 'Terraform', 'Ansible', 'Linux',
+
+            # Python stack
+            'pandas', 'numpy', 'requests', 'asyncio',
+
+            # Data/ETL
+            'ETL', 'ELT',
+
+            # API
+            'API', 'REST', 'REST API',
+
+            # Shell
+            'bash',
 
             # Библиотеки
             'mavsdk', 'opencv', 'OpenCV', 'ardupilot', 'ArduPilot',
@@ -201,15 +215,43 @@ SOFT SKILLS:
 
         found_soft = [s for s in soft_skills_list if s.lower() in text_lower]
 
-        found_technical = list(dict.fromkeys(found_technical))[:15]
+        if key_skills:
+            for ks in key_skills:
+                if ks not in found_technical:
+                    found_technical.insert(0, ks)
+
+        found_technical = list(dict.fromkeys(found_technical))[:20]
         found_soft = list(dict.fromkeys(found_soft))[:8]
-        found_keywords = list(dict.fromkeys(found_technical + found_soft[:3]))[:20]
+        found_keywords = list(dict.fromkeys(key_skills + found_technical + found_soft[:3]))[:25]
 
         return {
             'technical': found_technical,
             'soft': found_soft,
             'keywords': found_keywords
         }
+
+    def _extract_key_skills(self, text):
+        """Извлечь ключевые навыки из явного списка"""
+        markers = ['ключевые навыки', 'key skills', 'skills']
+        lines = text.splitlines()
+        start_idx = None
+        for i, line in enumerate(lines):
+            if any(m in line.lower() for m in markers):
+                start_idx = i + 1
+                break
+        if start_idx is None:
+            return []
+
+        collected = []
+        for line in lines[start_idx:]:
+            if not line.strip():
+                break
+            cleaned = line.strip().lstrip('-•').strip()
+            if not cleaned:
+                continue
+            collected.extend([p.strip() for p in re.split(r'[;,]', cleaned) if p.strip()])
+
+        return list(dict.fromkeys(collected))[:15]
 
     def format_keywords_message(self, keywords_dict):
         """Форматирование сообщения"""
