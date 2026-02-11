@@ -90,6 +90,24 @@ def get_user_session(user_id):
 def _items_key(section_key):
     return section_key if section_key.endswith('s') else section_key + 's'
 
+def _reset_resume_data(session):
+    keys = [
+        'full_name', 'email', 'phone', 'location', 'linkedin', 'github', 'portfolio',
+        'university', 'degree', 'study_period', 'experiences', 'projects',
+        'technical_skills', 'soft_skills', 'achievements', 'languages', 'interests',
+        'vacancy_text', 'vacancy_keywords', 'template', 'template_id', 'status',
+        'resume_date', 'current_item'
+    ]
+    for key in keys:
+        if key in ['experiences', 'projects']:
+            session[key] = []
+        elif key == 'vacancy_keywords':
+            session[key] = {}
+        else:
+            session[key] = ''
+    session['waiting_for'] = None
+    session['current_item'] = {}
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало работы"""
@@ -275,6 +293,7 @@ async def start_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
     # Сбрасываем состояние
+    _reset_resume_data(session)
     session['current_section'] = 'personal'
     session['current_question'] = 0
     session['history'] = []
@@ -712,14 +731,21 @@ async def show_sections_editor(update: Update, context: ContextTypes.DEFAULT_TYP
     msg = "<b>Редактирование разделов резюме</b>\n\n"
 
     # Собираем данные для клавиатуры
+    def is_filled(value):
+        if isinstance(value, list):
+            return len(value) > 0
+        if isinstance(value, str):
+            return bool(value.strip())
+        return bool(value)
+
     user_sections = {
-        'education': bool(session.get('university')),
-        'experience': bool(session.get('experiences')),
-        'projects': bool(session.get('projects')),
-        'skills': bool(session.get('technical_skills')),
-        'achievements': bool(session.get('achievements')),
-        'languages': bool(session.get('languages')),
-        'interests': bool(session.get('interests'))
+        'education': is_filled(session.get('university')),
+        'experience': is_filled(session.get('experiences')),
+        'projects': is_filled(session.get('projects')),
+        'skills': is_filled(session.get('technical_skills')),
+        'achievements': is_filled(session.get('achievements')),
+        'languages': is_filled(session.get('languages')),
+        'interests': is_filled(session.get('interests'))
     }
 
     # Показываем какие разделы заполнены
@@ -1219,6 +1245,7 @@ async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_user_session(user_id)
     session['username'] = update.effective_user.username
     # Сбрасываем состояние
+    _reset_resume_data(session)
     session['current_section'] = 'personal'
     session['current_question'] = 0
     session['history'] = []
