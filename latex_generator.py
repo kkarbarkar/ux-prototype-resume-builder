@@ -174,11 +174,16 @@ class LaTeXGenerator:
 
                 # Компилируем в PDF
                 try:
+                    env = os.environ.copy()
+                    env['TEXMFHOME'] = tmpdir
+                    env['TEXMFVAR'] = tmpdir
+                    env['TEXMFCONFIG'] = tmpdir
                     result = subprocess.run(
-                        ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory', tmpdir, tex_file],
+                        ['pdflatex', '-interaction=nonstopmode', '-file-line-error', '-output-directory', tmpdir, tex_file],
                         capture_output=True,
-                        timeout=180,
-                        cwd=tmpdir
+                        timeout=240,
+                        cwd=tmpdir,
+                        env=env
                     )
                     if os.path.exists(pdf_file):
                         with open(pdf_file, 'rb') as f:
@@ -191,6 +196,13 @@ class LaTeXGenerator:
                         detail = stderr or stdout
                         if detail:
                             detail = detail[-400:]
+                        log_file = os.path.join(tmpdir, 'resume.log')
+                        if os.path.exists(log_file):
+                            with open(log_file, 'r', encoding='utf-8', errors='ignore') as lf:
+                                log_text = lf.read()
+                            error_lines = [line.strip() for line in log_text.splitlines() if line.strip().startswith('!')]
+                            if error_lines:
+                                return None, f"Ошибка компиляции: {error_lines[-1]}"
                         return None, f"Ошибка компиляции: {detail or 'pdflatex exit code'}"
 
                     return None, "PDF не создался"
