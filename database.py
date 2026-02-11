@@ -6,6 +6,21 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 class Database:
+    USERS_HEADERS = [
+        'UserID', 'Username', 'Дата регистрации', 'ФИО', 'Email', 'Телефон',
+        'Город', 'LinkedIn', 'GitHub', 'Portfolio',
+        'Университет', 'Специальность', 'Период обучения',
+        'Опыт работы (JSON)', 'Проекты (JSON)', 'Технические навыки',
+        'Soft skills', 'Достижения', 'Языки', 'Интересы',
+        'Текст вакансии', 'Ключевые слова (JSON)', 'Выбранный шаблон',
+        'Дата создания резюме', 'Статус', 'Feedback (JSON)'
+    ]
+    FEEDBACK_HEADERS = [
+        'UserID', 'Username', 'Дата', 'Оценка резюме', 'Будет использовать',
+        'Время редактирования', 'Редактировал резюме', 'Общая оценка',
+        'Комментарий', 'Статус конверсии'
+    ]
+
     def __init__(self):
         scope = [
             'https://spreadsheets.google.com/feeds',
@@ -36,16 +51,7 @@ class Database:
                 title='Users', rows=1000, cols=25
             )
             # ИСПРАВЛЕНИЕ: правильные заголовки
-            headers = [
-                'UserID', 'Username', 'Дата регистрации', 'ФИО', 'Email', 'Телефон',
-                'Город', 'LinkedIn', 'GitHub', 'Portfolio',
-                'Университет', 'Специальность', 'Период обучения',
-                'Опыт работы (JSON)', 'Проекты (JSON)', 'Технические навыки',
-                'Soft skills', 'Достижения', 'Языки', 'Интересы',
-                'Текст вакансии', 'Ключевые слова (JSON)', 'Выбранный шаблон',
-                'Дата создания резюме', 'Статус', 'Feedback (JSON)'
-            ]
-            self.users_sheet.append_row(headers)
+            self.users_sheet.append_row(self.USERS_HEADERS)
 
         try:
             self.feedback_sheet = self.spreadsheet.worksheet('Feedback')
@@ -53,12 +59,7 @@ class Database:
             self.feedback_sheet = self.spreadsheet.add_worksheet(
                 title='Feedback', rows=1000, cols=15
             )
-            headers = [
-                'UserID', 'Username', 'Дата', 'Оценка резюме', 'Будет использовать',
-                'Время редактирования', 'Редактировал резюме', 'Общая оценка',
-                'Комментарий', 'Статус конверсии'
-            ]
-            self.feedback_sheet.append_row(headers)
+            self.feedback_sheet.append_row(self.FEEDBACK_HEADERS)
 
         try:
             self.analytics_sheet = self.spreadsheet.worksheet('Analytics')
@@ -72,6 +73,38 @@ class Database:
                 'Время редактирования <30 мин', 'Редактировали'
             ]
             self.analytics_sheet.append_row(headers)
+
+    def _dedupe_headers(self, headers):
+        seen = {}
+        result = []
+        for h in headers:
+            name = h if h else 'Column'
+            if name in seen:
+                seen[name] += 1
+                result.append(f"{name}_{seen[name]}")
+            else:
+                seen[name] = 1
+                result.append(name)
+        return result
+
+    def _get_all_records(self, sheet, expected_headers):
+        try:
+            return sheet.get_all_records(expected_headers=expected_headers)
+        except Exception:
+            values = sheet.get_all_values()
+            if not values:
+                return []
+            headers = values[0]
+            if expected_headers and len(expected_headers) == len(headers):
+                headers = expected_headers
+            else:
+                headers = self._dedupe_headers(headers)
+            records = []
+            for row in values[1:]:
+                if len(row) < len(headers):
+                    row = row + [''] * (len(headers) - len(row))
+                records.append(dict(zip(headers, row[:len(headers)])))
+            return records
 
     def save_user_data(self, user_id, username, data):
         """Сохранение данных пользователя"""
@@ -191,14 +224,14 @@ class Database:
     def update_analytics(self):
         """Обновление аналитики"""
         try:
-            all_users = self.users_sheet.get_all_records()
+            all_users = self._get_all_records(self.users_sheet, self.USERS_HEADERS)
 
             total_users = len(all_users)
             completed = len([u for u in all_users if u.get('Статус') == 'completed'])
             conversion = (completed / total_users * 100) if total_users > 0 else 0
 
             # Получаем feedback
-            all_feedback = self.feedback_sheet.get_all_records()
+            all_feedback = self._get_all_records(self.feedback_sheet, self.FEEDBACK_HEADERS)
 
             # Исправление: проверяем тип данных
             ratings = []
