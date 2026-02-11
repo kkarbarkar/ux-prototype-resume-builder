@@ -50,6 +50,41 @@ def get_user_session(user_id):
             'history': [],
             'message_ids': []
         }
+        saved = db.get_user_data(user_id)
+        if saved:
+            mapping = {
+                'ФИО': 'full_name',
+                'Email': 'email',
+                'Телефон': 'phone',
+                'Город': 'location',
+                'LinkedIn': 'linkedin',
+                'GitHub': 'github',
+                'Portfolio': 'portfolio',
+                'Университет': 'university',
+                'Специальность': 'degree',
+                'Период обучения': 'study_period',
+                'Технические навыки': 'technical_skills',
+                'Soft skills': 'soft_skills',
+                'Достижения': 'achievements',
+                'Языки': 'languages',
+                'Интересы': 'interests',
+                'Текст вакансии': 'vacancy_text',
+                'Выбранный шаблон': 'template',
+                'Дата создания резюме': 'resume_date',
+                'Статус': 'status'
+            }
+            for src, dst in mapping.items():
+                if src in saved and saved[src]:
+                    user_sessions[user_id][dst] = saved[src]
+            for key in ['experiences', 'projects', 'vacancy_keywords']:
+                if key in saved:
+                    user_sessions[user_id][key] = saved[key]
+            if saved.get('status') == 'completed' and saved.get('resume_date'):
+                user_sessions[user_id]['resumes'] = [{
+                    'date': saved.get('resume_date'),
+                    'name': saved.get('full_name', 'Резюме'),
+                    'template': saved.get('template', 'Modern')
+                }]
     return user_sessions[user_id]
 
 def _items_key(section_key):
@@ -274,7 +309,11 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
         # Проверяем, нужно ли добавить еще элементов (для опыта/проектов)
         if section.get('multiple'):
             keyboard = kb.add_more_back()
-            items_count = len(session.get(_items_key(section_key), []))
+            items_key = _items_key(section_key)
+            items_count = len(session.get(items_key, []))
+            current_item = session.get('current_item', {})
+            if current_item and any(current_item.values()):
+                items_count += 1
 
             msg = f"<b>✅ {section['title']}</b>\n\n"
             if items_count > 0:
@@ -374,6 +413,16 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # ИСПРАВЛЕНИЕ: режим редактирования - возврат после завершения ЭТОГО раздела
     if session.get('editing_mode'):
+        if section_key == 'additional' and question['key'] == session.get('editing_section_id'):
+            session['editing_mode'] = False
+            session['editing_section_id'] = None
+            session['editing_item_index'] = None
+            await update.message.reply_text(
+                "✅ <b>Раздел обновлен!</b>",
+                parse_mode=ParseMode.HTML
+            )
+            return await show_sections_editor(update, context)
+
         session['current_question'] += 1
 
         # Проверяем завершили ли ВСЕ вопросы в редактируемом разделе
@@ -437,6 +486,22 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         return await next_section(update, context)
+
+    if session.get('editing_mode'):
+        section_data = config.QUESTIONS_STRUCTURE.get(section_key)
+        questions = section_data['questions'] if section_data else []
+        question_idx = session['current_question']
+        if section_key == 'additional' and question_idx < len(questions):
+            question = questions[question_idx]
+            if question['key'] == session.get('editing_section_id'):
+                session['editing_mode'] = False
+                session['editing_section_id'] = None
+                session['editing_item_index'] = None
+                await query.message.reply_text(
+                    "✅ <b>Раздел обновлен!</b>",
+                    parse_mode=ParseMode.HTML
+                )
+                return await show_sections_editor(update, context)
 
     # Для секций с multiple - переходим к следующей секции при пропуске первого вопроса
     if section and section.get('multiple') and session['current_question'] == 0:

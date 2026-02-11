@@ -1,3 +1,5 @@
+import logging
+import os
 import re
 
 # Пытаемся импортировать Google Gemini
@@ -15,17 +17,29 @@ import config
 class AIAnalyzer:
     def __init__(self):
         self.model = None
+        self.model_name = None
+        self.model_candidates = []
+        self.model_index = 0
+        self.logger = logging.getLogger(__name__)
 
         if GEMINI_AVAILABLE and config.GOOGLE_API_KEY:
             try:
                 genai.configure(api_key=config.GOOGLE_API_KEY)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
-                print("✅ Google Gemini подключен")
+                preferred = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+                self.model_candidates = [
+                    preferred,
+                    'gemini-1.5-flash-latest',
+                    'gemini-1.0-pro',
+                    'gemini-pro'
+                ]
+                self.model_name = self.model_candidates[0]
+                self.model = genai.GenerativeModel(self.model_name)
+                self.logger.info("✅ Google Gemini подключен: %s", self.model_name)
             except Exception as e:
-                print(f"⚠️ Ошибка подключения Gemini: {e}")
-                print("Используется fallback анализ")
+                self.logger.warning("⚠️ Ошибка подключения Gemini: %s", e)
+                self.logger.info("Используется fallback анализ")
         else:
-            print("⚠️ Используется fallback анализ вакансий")
+            self.logger.info("⚠️ Используется fallback анализ вакансий")
 
     def extract_keywords_from_vacancy(self, vacancy_text):
         """Извлечение ключевых слов из вакансии"""
@@ -64,8 +78,29 @@ SOFT SKILLS:
 - слово1
 - слово2"""
 
-        response = self.model.generate_content(prompt)
-        return self._parse_ai_response(response.text, vacancy_text)
+        try:
+            response = self.model.generate_content(prompt)
+            return self._parse_ai_response(response.text, vacancy_text)
+        except Exception as e:
+            error_text = str(e)
+            if self._should_rotate_model(error_text):
+                self._rotate_model()
+                response = self.model.generate_content(prompt)
+                return self._parse_ai_response(response.text, vacancy_text)
+            raise
+
+    def _should_rotate_model(self, error_text):
+        return 'not found' in error_text.lower() or '404' in error_text
+
+    def _rotate_model(self):
+        if not self.model_candidates:
+            return
+        self.model_index += 1
+        if self.model_index >= len(self.model_candidates):
+            self.model_index = 0
+        self.model_name = self.model_candidates[self.model_index]
+        self.model = genai.GenerativeModel(self.model_name)
+        self.logger.warning("🔁 Переключаю модель Gemini на %s", self.model_name)
 
     def _parse_ai_response(self, text, original_vacancy):
         """Парсинг ответа AI с проверкой"""
