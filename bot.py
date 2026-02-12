@@ -235,8 +235,9 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
 
     await clear_reply_markup_from_query(query)
 
+    started_at = time.monotonic()
     await query.message.reply_text(
-        "⏳ <b>Генерирую резюме...</b>",
+        "⏳ <b>Генерирую резюме...</b>\nОбычно это занимает 20-90 секунд, иногда до 2 минут.",
         parse_mode=ParseMode.HTML
     )
 
@@ -244,10 +245,12 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
     pdf_data, error = latex_gen.generate_pdf(session, session.get('vacancy_keywords'))
 
     if pdf_data:
+        elapsed = int(time.monotonic() - started_at)
         caption = f"""<b>📄 Твое резюме</b>
 
 Дата создания: {session.get('resumes', [])[resume_idx]['date']}
-Шаблон: {session.get('resumes', [])[resume_idx]['template']}"""
+Шаблон: {session.get('resumes', [])[resume_idx]['template']}
+Время генерации: ~{elapsed} сек."""
 
         await query.message.reply_document(
             document=pdf_data,
@@ -1005,15 +1008,18 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
+    started_at = time.monotonic()
     creating_msg = await query.message.reply_text(
-        "⏳ <b>Создаю твое резюме...</b>",
+        "⏳ <b>Создаю твое резюме...</b>\nОбычно это занимает 20-90 секунд, иногда до 2 минут.",
         parse_mode=ParseMode.HTML
     )
 
     # Сохраняем в Google Sheets
     session['status'] = 'completed'
     session['resume_date'] = datetime.now().strftime('%Y-%m-%d %H:%M')
-    db.save_user_data(user_id, username, session)
+    save_ok = db.save_user_data(user_id, username, session)
+    if not save_ok:
+        logger.warning("⚠️ Не удалось сохранить данные пользователя %s перед генерацией", user_id)
 
     # Генерируем PDF
     pdf_data, error = latex_gen.generate_pdf(session, session.get('vacancy_keywords'))
@@ -1021,12 +1027,14 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await creating_msg.delete()
 
     if pdf_data:
+        elapsed = int(time.monotonic() - started_at)
         # Отправляем PDF
-        caption = """<b>🎉 Твое резюме готово!</b>
+        caption = f"""<b>Твое резюме готово!</b>
 
 ✅ Ключевые слова из вакансии выделены синим
 ✅ Формат оптимизирован для ATS-систем
 ✅ Профессиональное оформление
+Время генерации: ~{elapsed} сек.
 
 Удачи с откликами! 🚀"""
 
@@ -1068,6 +1076,13 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'name': session.get('full_name', 'Резюме'),
         'template': session.get('template', 'Modern')
     })
+
+    if not save_ok:
+        await query.message.reply_text(
+            "Не удалось сохранить данные в таблицу с первого раза. Попробую повторно в фоне.",
+            parse_mode=ParseMode.HTML
+        )
+        db.save_user_data(user_id, username, session)
 
     # Запускаем сбор feedback
     return await start_feedback(update, context)

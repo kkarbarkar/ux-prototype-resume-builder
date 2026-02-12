@@ -3,6 +3,7 @@ from datetime import datetime
 import config
 import os
 import json
+import time
 from oauth2client.service_account import ServiceAccountCredentials
 
 class Database:
@@ -107,59 +108,70 @@ class Database:
                 records.append(dict(zip(headers, row[:len(headers)])))
             return records
 
+    def _column_letter(self, index):
+        """1-based column index to A1 letter notation."""
+        letters = ""
+        while index > 0:
+            index, rem = divmod(index - 1, 26)
+            letters = chr(65 + rem) + letters
+        return letters
+
     def save_user_data(self, user_id, username, data):
         """Сохранение данных пользователя"""
-        try:
-            cell = self.users_sheet.find(str(user_id))
+        # Сериализуем сложные структуры
+        experiences_json = json.dumps(data.get('experiences', []), ensure_ascii=False)
+        projects_json = json.dumps(data.get('projects', []), ensure_ascii=False)
+        educations_json = json.dumps(data.get('educations', []), ensure_ascii=False)
+        keywords_json = json.dumps(data.get('vacancy_keywords', {}), ensure_ascii=False)
+        feedback_json = json.dumps(data.get('feedback', {}), ensure_ascii=False)
 
-            # Сериализуем сложные структуры
-            experiences_json = json.dumps(data.get('experiences', []), ensure_ascii=False)
-            projects_json = json.dumps(data.get('projects', []), ensure_ascii=False)
-            educations_json = json.dumps(data.get('educations', []), ensure_ascii=False)
-            keywords_json = json.dumps(data.get('vacancy_keywords', {}), ensure_ascii=False)
-            feedback_json = json.dumps(data.get('feedback', {}), ensure_ascii=False)
+        row_data = [
+            user_id,
+            username or '',
+            data.get('registration_date', datetime.now().strftime('%Y-%m-%d %H:%M')),
+            data.get('full_name', ''),
+            data.get('email', ''),
+            data.get('phone', ''),
+            data.get('location', ''),
+            data.get('linkedin', ''),
+            data.get('github', ''),
+            data.get('portfolio', ''),
+            data.get('university', ''),
+            data.get('degree', ''),
+            data.get('study_period', ''),
+            educations_json,
+            experiences_json,
+            projects_json,
+            data.get('technical_skills', ''),
+            data.get('soft_skills', ''),
+            data.get('achievements', ''),
+            data.get('languages', ''),
+            data.get('interests', ''),
+            data.get('vacancy_text', ''),
+            keywords_json,
+            data.get('template', ''),
+            data.get('resume_date', ''),
+            data.get('status', 'in_progress'),
+            feedback_json
+        ]
 
-            row_data = [
-                user_id,
-                username or '',
-                data.get('registration_date', datetime.now().strftime('%Y-%m-%d %H:%M')),
-                data.get('full_name', ''),
-                data.get('email', ''),
-                data.get('phone', ''),
-                data.get('location', ''),
-                data.get('linkedin', ''),
-                data.get('github', ''),
-                data.get('portfolio', ''),
-                data.get('university', ''),
-                data.get('degree', ''),
-                data.get('study_period', ''),
-                educations_json,
-                experiences_json,
-                projects_json,
-                data.get('technical_skills', ''),
-                data.get('soft_skills', ''),
-                data.get('achievements', ''),
-                data.get('languages', ''),
-                data.get('interests', ''),
-                data.get('vacancy_text', ''),
-                keywords_json,
-                data.get('template', ''),
-                data.get('resume_date', ''),
-                data.get('status', 'in_progress'),
-                feedback_json
-            ]
-
-            if cell:
-                row_num = cell.row
-                for col_num, value in enumerate(row_data, start=1):
-                    self.users_sheet.update_cell(row_num, col_num, value)
-            else:
-                self.users_sheet.append_row(row_data)
-
-            return True
-        except Exception as e:
-            print(f"Error saving user data: {e}")
-            return False
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            try:
+                cell = self.users_sheet.find(str(user_id))
+                if cell:
+                    row_num = cell.row
+                    end_col = self._column_letter(len(row_data))
+                    self.users_sheet.update(f"A{row_num}:{end_col}{row_num}", [row_data])
+                else:
+                    self.users_sheet.append_row(row_data)
+                return True
+            except Exception as e:
+                print(f"Error saving user data (attempt {attempt}/{attempts}): {e}")
+                if attempt < attempts:
+                    time.sleep(0.6 * attempt)
+                else:
+                    return False
 
     def get_user_data(self, user_id):
         """Получение данных пользователя"""
