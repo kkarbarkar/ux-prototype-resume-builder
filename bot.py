@@ -237,7 +237,7 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
     await clear_reply_markup_from_query(query)
 
     await query.message.reply_text(
-        "⏳ <b>Генерирую резюме...</b>\nЭто занимает до 2 минут.",
+        "⏳ <b>Генерирую резюме...</b>\nЭто займет до 2 минут.",
         parse_mode=ParseMode.HTML
     )
 
@@ -247,8 +247,7 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
     if pdf_data:
         caption = f"""<b>📄 Твое резюме</b>
 
-Дата создания: {session.get('resumes', [])[resume_idx]['date']}
-Шаблон: {session.get('resumes', [])[resume_idx]['template']}"""
+Дата создания: {session.get('resumes', [])[resume_idx]['date']}"""
 
         await query.message.reply_document(
             document=pdf_data,
@@ -576,10 +575,6 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Если пропускаем первый вопрос в education - пропускаем всю секцию
     if section_key == 'education' and session['current_question'] == 0:
-        await query.message.reply_text(
-            "<i>⏭ Пропускаем образование...</i>",
-            parse_mode=ParseMode.HTML
-        )
         return await next_section(update, context)
 
     if session.get('editing_mode'):
@@ -609,10 +604,6 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Для секций с multiple - переходим к следующей секции при пропуске первого вопроса
     if section and section.get('multiple') and session['current_question'] == 0:
-        await query.message.reply_text(
-            f"<i>⏭ Пропускаем {section['title']}...</i>",
-            parse_mode=ParseMode.HTML
-        )
         return await next_section(update, context)
 
     session['current_question'] += 1
@@ -784,7 +775,7 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(result_msg, parse_mode=ParseMode.HTML)
 
     # Сразу переходим к редактированию
-    session['template'] = 'Современный (Jake\'s Resume)'
+    session['template'] = 'Современный'
     session['template_id'] = 'modern'
 
     msg = """<b>📝 Структура резюме</b>
