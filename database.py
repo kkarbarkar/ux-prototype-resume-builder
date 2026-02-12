@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 class Database:
     USERS_HEADERS = [
         'UserID', 'Username', 'Дата регистрации', 'ФИО', 'Email', 'Телефон',
-        'Город', 'LinkedIn', 'GitHub', 'Portfolio',
+        'Город', 'LinkedIn', 'GitHub', 'GitLab', 'Portfolio',
         'Университет', 'Специальность', 'Период обучения',
         'Образование (JSON)',
         'Опыт работы (JSON)', 'Проекты (JSON)', 'Технические навыки',
@@ -135,6 +135,7 @@ class Database:
             data.get('location', ''),
             data.get('linkedin', ''),
             data.get('github', ''),
+            data.get('gitlab', ''),
             data.get('portfolio', ''),
             data.get('university', ''),
             data.get('degree', ''),

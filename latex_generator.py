@@ -118,7 +118,7 @@ class LaTeXGenerator:
         else:
             latex_content = latex_content.replace('{LOCATION_PIPE}', '')
 
-        # Ссылки (LinkedIn, GitHub, Portfolio) - в одну строку
+        # Ссылки (LinkedIn, GitHub, GitLab, Portfolio) - в одну строку
         links = []
         if user_data.get('linkedin'):
             linkedin = user_data.get('linkedin').replace('https://', '').replace('http://', '')
@@ -126,6 +126,9 @@ class LaTeXGenerator:
         if user_data.get('github'):
             github = user_data.get('github').replace('https://', '').replace('http://', '')
             links.append(r'\href{https://' + self._escape_latex(github) + r'}{\underline{GitHub}}')
+        if user_data.get('gitlab'):
+            gitlab = user_data.get('gitlab').replace('https://', '').replace('http://', '')
+            links.append(r'\href{https://' + self._escape_latex(gitlab) + r'}{\underline{GitLab}}')
         if user_data.get('portfolio'):
             portfolio = user_data.get('portfolio').replace('https://', '').replace('http://', '')
             links.append(r'\href{https://' + self._escape_latex(portfolio) + r'}{\underline{Portfolio}}')

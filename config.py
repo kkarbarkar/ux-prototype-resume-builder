@@ -49,8 +49,14 @@ QUESTIONS_STRUCTURE = {
             },
             {
                 'key': 'github',
-                'text': '<b>💻 GitHub/GitLab</b>\n\nЕсли есть, укажите ссылку',
+                'text': '<b>💻 GitHub</b>\n\nЕсли есть, укажите ссылку',
                 'example': 'github.com/ivan-ivanov',
+                'required': False
+            },
+            {
+                'key': 'gitlab',
+                'text': '<b>🦊 GitLab</b>\n\nЕсли есть, укажите ссылку',
+                'example': 'gitlab.com/ivan-ivanov',
                 'required': False
             },
             {

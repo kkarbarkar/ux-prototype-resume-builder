@@ -62,6 +62,7 @@ def get_user_session(user_id):
                 'Город': 'location',
                 'LinkedIn': 'linkedin',
                 'GitHub': 'github',
+                'GitLab': 'gitlab',
                 'Portfolio': 'portfolio',
                 'Университет': 'university',
                 'Специальность': 'degree',
@@ -102,7 +103,7 @@ def _items_key(section_key):
 
 def _reset_resume_data(session):
     keys = [
-        'full_name', 'email', 'phone', 'location', 'linkedin', 'github', 'portfolio',
+        'full_name', 'email', 'phone', 'location', 'linkedin', 'github', 'gitlab', 'portfolio',
         'university', 'degree', 'study_period', 'educations', 'experiences', 'projects',
         'technical_skills', 'soft_skills', 'achievements', 'languages', 'interests',
         'vacancy_text', 'vacancy_keywords', 'template', 'template_id', 'status',
@@ -213,7 +214,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 3️⃣ Получишь готовое резюме в PDF
 
 <b>✨ Особенности:</b>
-- AI-анализ вакансии с Google Gemini
+- Анализ вакансии и выделение ключевых требований
 - Автоматическая подсветка важных навыков
 - Возможность редактировать разделы
 
@@ -235,9 +236,8 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
 
     await clear_reply_markup_from_query(query)
 
-    started_at = time.monotonic()
     await query.message.reply_text(
-        "⏳ <b>Генерирую резюме...</b>\nОбычно это занимает 20-90 секунд, иногда до 2 минут.",
+        "⏳ <b>Генерирую резюме...</b>\nЭто занимает до 2 минут.",
         parse_mode=ParseMode.HTML
     )
 
@@ -245,12 +245,10 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
     pdf_data, error = latex_gen.generate_pdf(session, session.get('vacancy_keywords'))
 
     if pdf_data:
-        elapsed = int(time.monotonic() - started_at)
         caption = f"""<b>📄 Твое резюме</b>
 
 Дата создания: {session.get('resumes', [])[resume_idx]['date']}
-Шаблон: {session.get('resumes', [])[resume_idx]['template']}
-Время генерации: ~{elapsed} сек."""
+Шаблон: {session.get('resumes', [])[resume_idx]['template']}"""
 
         await query.message.reply_document(
             document=pdf_data,
@@ -302,11 +300,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(
-                """<b>📄 Мои резюме</b>
-
-    Здесь будут отображаться твои созданные резюме.
-
-    Пока пусто - создай первое резюме! 😊""",
+                "<b>📄 Мои резюме</b>\n\n"
+                "Здесь будут отображаться твои созданные резюме.\n\n"
+                "Пока пусто - создай первое резюме!",
                 reply_markup=kb.main_menu(),
                 parse_mode=ParseMode.HTML
             )
@@ -1008,9 +1004,8 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
-    started_at = time.monotonic()
     creating_msg = await query.message.reply_text(
-        "⏳ <b>Создаю твое резюме...</b>\nОбычно это занимает 20-90 секунд, иногда до 2 минут.",
+        "⏳ <b>Создаю твое резюме...</b>\nЭто займет до 2 минут.",
         parse_mode=ParseMode.HTML
     )
 
@@ -1027,16 +1022,8 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await creating_msg.delete()
 
     if pdf_data:
-        elapsed = int(time.monotonic() - started_at)
         # Отправляем PDF
-        caption = f"""<b>Твое резюме готово!</b>
-
-✅ Ключевые слова из вакансии выделены синим
-✅ Формат оптимизирован для ATS-систем
-✅ Профессиональное оформление
-Время генерации: ~{elapsed} сек.
-
-Удачи с откликами! 🚀"""
+        caption = "<b>Твое резюме готово!</b>"
 
         await query.message.reply_document(
             document=pdf_data,
@@ -1049,10 +1036,7 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         latex_code = latex_gen.generate_resume(session, session.get('vacancy_keywords'))
         latex_file = io.BytesIO(latex_code.encode('utf-8'))
 
-        caption = f"""<b>📝 Твое резюме готово!</b>
-
-✅ Ключевые слова из вакансии выделены синим
-✅ Формат оптимизирован для ATS-систем
+        caption = f"""<b>Твое резюме готово!</b>
 
 <b>Как получить PDF:</b>
 1. Открой файл в Overleaf (overleaf.com)
@@ -1252,14 +1236,9 @@ async def finish_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Analytics error: {e}")
 
-    msg = """<b>🎉 Спасибо за участие в исследовании!</b>
+    msg = """<b>Спасибо за участие в исследовании!</b>
 
 Твои ответы очень помогут нам улучшить продукт.
-
-<b>📬 Связь с нами:</b>
-Telegram: @karbarkarrr
-
-Если у тебя есть вопросы или предложения, пиши!
 
 Удачи в поиске работы! 🚀"""
 
@@ -1281,7 +1260,7 @@ Telegram: @karbarkarrr
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Помощь"""
-    help_text = """<b>🤖 Помощь по боту</b>
+    help_text = """<b>Помощь по боту</b>
 
 <b>📝 Как пользоваться:</b>
 - Нажми "Создать новое резюме"
@@ -1294,20 +1273,21 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - В любой момент можно вернуться назад
 - Любой раздел можно пропустить
 - После создания можно редактировать разделы
-- AI анализирует вакансию и выделяет ключевые слова
-
-<b>📬 Поддержка:</b>
-@karbarkarrr
+- Бот анализирует вакансию и выделяет ключевые слова
 
 <b>🎯 О боте:</b>
 Прототип для UX-исследования по упрощению создания резюме для студентов и молодых специалистов."""
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            help_text,
-            reply_markup=kb.main_menu(),
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await update.callback_query.edit_message_text(
+                help_text,
+                reply_markup=kb.main_menu(),
+                parse_mode=ParseMode.HTML
+            )
+        except BadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
     else:
         await update.message.reply_text(
             help_text,
