@@ -17,6 +17,7 @@ import http.server
 import socketserver
 import os
 import threading
+import time
 
 # Логирование
 logging.basicConfig(
@@ -46,6 +47,7 @@ def get_user_session(user_id):
             'registration_date': datetime.now().strftime('%Y-%m-%d %H:%M'),
             'current_section': None,
             'current_question': 0,
+            'educations': [],
             'experiences': [],
             'projects': [],
             'history': [],
@@ -77,9 +79,16 @@ def get_user_session(user_id):
             for src, dst in mapping.items():
                 if src in saved and saved[src]:
                     user_sessions[user_id][dst] = saved[src]
-            for key in ['experiences', 'projects', 'vacancy_keywords']:
+            for key in ['educations', 'experiences', 'projects', 'vacancy_keywords']:
                 if key in saved:
                     user_sessions[user_id][key] = saved[key]
+            if not user_sessions[user_id].get('educations'):
+                if saved.get('Университет') or saved.get('Специальность') or saved.get('Период обучения'):
+                    user_sessions[user_id]['educations'] = [{
+                        'university': saved.get('Университет', ''),
+                        'degree': saved.get('Специальность', ''),
+                        'study_period': saved.get('Период обучения', '')
+                    }]
             if saved.get('status') == 'completed' and saved.get('resume_date'):
                 user_sessions[user_id]['resumes'] = [{
                     'date': saved.get('resume_date'),
@@ -94,13 +103,13 @@ def _items_key(section_key):
 def _reset_resume_data(session):
     keys = [
         'full_name', 'email', 'phone', 'location', 'linkedin', 'github', 'portfolio',
-        'university', 'degree', 'study_period', 'experiences', 'projects',
+        'university', 'degree', 'study_period', 'educations', 'experiences', 'projects',
         'technical_skills', 'soft_skills', 'achievements', 'languages', 'interests',
         'vacancy_text', 'vacancy_keywords', 'template', 'template_id', 'status',
         'resume_date', 'current_item'
     ]
     for key in keys:
-        if key in ['experiences', 'projects']:
+        if key in ['educations', 'experiences', 'projects']:
             session[key] = []
         elif key == 'vacancy_keywords':
             session[key] = {}
@@ -122,6 +131,38 @@ IGNORABLE_REPLY_MARKUP_ERRORS = (
 def _is_ignorable_reply_markup_error(exc: Exception) -> bool:
     text = str(exc).lower()
     return any(pattern in text for pattern in IGNORABLE_REPLY_MARKUP_ERRORS)
+
+
+def _sync_primary_education_from_list(session):
+    educations = session.get('educations') or []
+    if not educations:
+        session['university'] = ''
+        session['degree'] = ''
+        session['study_period'] = ''
+        return
+    first = educations[0] or {}
+    session['university'] = first.get('university', '')
+    session['degree'] = first.get('degree', '')
+    session['study_period'] = first.get('study_period', '')
+
+
+async def safe_answer_callback_query(query):
+    try:
+        await query.answer()
+    except BadRequest as exc:
+        # Typical for very old/duplicated callback presses.
+        if "query is too old" not in str(exc).lower() and "query_id_invalid" not in str(exc).lower():
+            logger.warning("⚠️ Ошибка answerCallbackQuery: %s", exc)
+
+
+def is_fast_duplicate_click(session, query):
+    if not query or not query.message:
+        return False
+    click_key = f"{query.message.message_id}:{query.data}"
+    now = time.monotonic()
+    last = session.get('last_click')
+    session['last_click'] = {'key': click_key, 'ts': now}
+    return bool(last and last.get('key') == click_key and now - float(last.get('ts', 0)) < 1.2)
 
 
 async def clear_reply_markup_from_query(query):
@@ -234,10 +275,12 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка нажатий кнопок"""
     query = update.callback_query
-    await query.answer()
+    await safe_answer_callback_query(query)
 
     user_id = update.effective_user.id
     session = get_user_session(user_id)
+    if is_fast_duplicate_click(session, query):
+        return MENU
 
     data = query.data
 
@@ -424,6 +467,10 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
     text = update.message.text
+    stripped = (text or '').strip().lower()
+
+    if stripped in ('\\start', '\\new'):
+        return await (start(update, context) if stripped == '\\start' else new_command(update, context))
 
     last_question_id = session.get('last_question_message_id')
     if last_question_id:
@@ -490,6 +537,8 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
                         session[items_key][session['editing_item_index']] = current_item
                     else:
                         session[items_key].append(current_item)
+                    if section_key == 'education':
+                        _sync_primary_education_from_list(session)
                     session['current_item'] = {}
 
             # ВОЗВРАЩАЕМСЯ К РЕДАКТОРУ
@@ -617,6 +666,8 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if items_key not in session:
             session[items_key] = []
         session[items_key].append(current_item)
+        if section_key == 'education':
+            _sync_primary_education_from_list(session)
         logger.info(f"✅ Saved to {items_key}: {current_item}")
 
     session['current_item'] = {}
@@ -650,6 +701,8 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if items_key not in session:
                 session[items_key] = []
             session[items_key].append(current_item)
+            if section_key == 'education':
+                _sync_primary_education_from_list(session)
             logger.info(f"✅ Saved in next_section to {items_key}: {current_item}")
 
         session['current_item'] = {}
@@ -767,7 +820,7 @@ async def show_sections_editor(update: Update, context: ContextTypes.DEFAULT_TYP
         return bool(value)
 
     user_sections = {
-        'education': is_filled(session.get('university')),
+        'education': is_filled(session.get('educations')) or is_filled(session.get('university')),
         'experience': is_filled(session.get('experiences')),
         'projects': is_filled(session.get('projects')),
         'skills': is_filled(session.get('technical_skills')),
@@ -820,7 +873,13 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     # Показываем текущие данные с деталями
     current_data = []
     if section_id == 'education':
-        if session.get('university'):
+        educations = session.get('educations', [])
+        if educations:
+            for i, edu in enumerate(educations, 1):
+                current_data.append(f"\n{i}. 🎓 {edu.get('university', '')}")
+                current_data.append(f"   Специальность: {edu.get('degree', '')}")
+                current_data.append(f"   Период: {edu.get('study_period', '')}")
+        elif session.get('university'):
             current_data.append(f"🎓 {session.get('university')}")
             current_data.append(f"   Специальность: {session.get('degree')}")
             current_data.append(f"   Период: {session.get('study_period')}")
@@ -876,6 +935,11 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
         section_key, question_offset = section_map[section_id]
         session['current_section'] = section_key
         session['current_question'] = question_offset
+        session['current_item'] = {}
+        if section_key == 'education':
+            # Editing education means re-entering the whole section from scratch.
+            session['educations'] = []
+            _sync_primary_education_from_list(session)
 
         if section_key == 'additional':
             section_data = config.QUESTIONS_STRUCTURE.get('additional')
@@ -902,7 +966,7 @@ async def delete_section(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
 
     # Очищаем данные раздела
     section_keys_map = {
-        'education': ['university', 'degree', 'study_period', 'gpa'],
+        'education': ['university', 'degree', 'study_period', 'educations', 'gpa'],
         'experience': ['experiences'],
         'projects': ['projects'],
         'skills': ['technical_skills', 'soft_skills'],
@@ -914,7 +978,9 @@ async def delete_section(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
     keys_to_clear = section_keys_map.get(section_id, [])
     for key in keys_to_clear:
         if key in session:
-            session[key] = [] if key in ['experiences', 'projects'] else ''
+            session[key] = [] if key in ['educations', 'experiences', 'projects'] else ''
+    if section_id == 'education':
+        _sync_primary_education_from_list(session)
 
     await query.message.reply_text(
         f"<b>🗑 Раздел удален</b>",
@@ -1102,7 +1168,7 @@ async def save_rating(update: Update, context: ContextTypes.DEFAULT_TYPE, rating
     session['feedback'][question['key']] = rating
     session['feedback_question'] += 1
 
-    await query.message.reply_text(f"✅ Оценка: {rating}", parse_mode=ParseMode.HTML)
+    await query.message.reply_text(f"Оценка: {rating}", parse_mode=ParseMode.HTML)
     await ask_feedback_question(update, context)
 
     return FEEDBACK_COLLECT
@@ -1130,7 +1196,7 @@ async def save_time(update: Update, context: ContextTypes.DEFAULT_TYPE, time_cod
     session['feedback'][question['key']] = time_map.get(time_code, time_code)
     session['feedback_question'] += 1
 
-    await query.message.reply_text(f"✅ Время: {time_map.get(time_code)}", parse_mode=ParseMode.HTML)
+    await query.message.reply_text(f"Время: {time_map.get(time_code)}", parse_mode=ParseMode.HTML)
     await ask_feedback_question(update, context)
 
     return FEEDBACK_COLLECT
@@ -1151,7 +1217,7 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, ans
     answer_text = 'Да' if answer == 'yes' else 'Нет'
     session['feedback'][question['key']] = answer_text
     session['feedback_question'] += 1
-    await query.message.reply_text(f"✅ Ответ: {answer_text}", parse_mode=ParseMode.HTML)
+    await query.message.reply_text(f"Ответ: {answer_text}", parse_mode=ParseMode.HTML)
     await ask_feedback_question(update, context)
 
     return FEEDBACK_COLLECT
@@ -1274,7 +1340,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "😔 Произошла ошибка. Попробуй еще раз или напиши /start",
+                "Произошла ошибка. Попробуй еще раз или напиши /start",
                 parse_mode=ParseMode.HTML
             )
         except:
@@ -1288,7 +1354,7 @@ async def process_feedback_comment(update: Update, context: ContextTypes.DEFAULT
 
     if session['feedback'].get('comment_requested'):
         session['feedback']['comment'] = update.message.text
-        await update.message.reply_text("✅ Спасибо за комментарий!", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("Спасибо за комментарий!", parse_mode=ParseMode.HTML)
         return await finish_feedback(update, context)
 
     return FEEDBACK_COLLECT
@@ -1315,31 +1381,43 @@ def main():
         states={
             MENU: [
                 CallbackQueryHandler(button_handler),
+                CommandHandler('start', start),
                 CommandHandler('new', new_command),
                 CommandHandler('help', help_command),
                 CommandHandler('feedback', start_feedback)
             ],
             COLLECTING_DATA: [
+                CommandHandler('start', start),
+                CommandHandler('new', new_command),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_text_answer),
                 CallbackQueryHandler(button_handler)
             ],
             VACANCY_INPUT: [
+                CommandHandler('start', start),
+                CommandHandler('new', new_command),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_vacancy),
                 CallbackQueryHandler(button_handler)
             ],
             TEMPLATE_SELECT: [
+                CommandHandler('start', start),
+                CommandHandler('new', new_command),
                 CallbackQueryHandler(button_handler)
             ],
             EDIT_SECTIONS: [
+                CommandHandler('start', start),
+                CommandHandler('new', new_command),
                 CallbackQueryHandler(button_handler),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_text_answer)
             ],
             FEEDBACK_COLLECT: [
+                CommandHandler('start', start),
+                CommandHandler('new', new_command),
                 CallbackQueryHandler(button_handler),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_feedback_comment)
             ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True,
         per_message=False,
         per_chat=True,
         per_user=True

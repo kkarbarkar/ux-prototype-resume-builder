@@ -238,16 +238,33 @@ class LaTeXGenerator:
 
     def _generate_education(self, data):
         """Генерация секции образования"""
-        if not data.get('university'):
-            return ''
+        educations = data.get('educations', [])
+        if not educations:
+            # Backward compatibility for old single-education payloads.
+            if data.get('university'):
+                educations = [{
+                    'university': data.get('university', ''),
+                    'degree': data.get('degree', ''),
+                    'study_period': data.get('study_period', '')
+                }]
+            else:
+                return ''
 
         section = r"""\section{Образование}
       \resumeSubHeadingListStart
-        \resumeSubheading
-          {""" + self._escape_latex(data.get('university', '')) + r"""}{""" + self._escape_latex(
-            data.get('study_period', '')) + r"""}
-          {""" + self._escape_latex(data.get('degree', '')) + r"""}{}
-      \resumeSubHeadingListEnd
+"""
+        for edu in educations:
+            university = (edu or {}).get('university', '')
+            degree = (edu or {}).get('degree', '')
+            study_period = (edu or {}).get('study_period', '')
+            if not any([university, degree, study_period]):
+                continue
+            section += r"""        \resumeSubheading
+          {""" + self._escape_latex(university) + r"""}{""" + self._escape_latex(study_period) + r"""}
+          {""" + self._escape_latex(degree) + r"""}{}
+"""
+
+        section += r"""      \resumeSubHeadingListEnd
 
     """
         return section

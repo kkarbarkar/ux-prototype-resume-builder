@@ -116,9 +116,15 @@ class Keyboards:
         """Список резюме для выбора"""
         keyboard = []
         for idx, resume in enumerate(resumes):
+            name = (resume.get('name') or 'Резюме').replace('\n', ' ').strip()
+            date = (resume.get('date') or '').replace('\n', ' ').strip()
+            if len(name) > 22:
+                name = name[:22] + "..."
+            if len(date) > 16:
+                date = date[:16]
             keyboard.append([
                 InlineKeyboardButton(
-                    f"📄 {resume['name']} ({resume['date']})",
+                    f"📄 {name} | {date}",
                     callback_data=f"view_resume_{idx}"
                 )
             ])

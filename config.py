@@ -63,6 +63,7 @@ QUESTIONS_STRUCTURE = {
     },
     'education': {
         'title': '🎓 Образование',
+        'multiple': True,
         'questions': [
             {
                 'key': 'university',

@@ -10,6 +10,7 @@ class Database:
         'UserID', 'Username', 'Дата регистрации', 'ФИО', 'Email', 'Телефон',
         'Город', 'LinkedIn', 'GitHub', 'Portfolio',
         'Университет', 'Специальность', 'Период обучения',
+        'Образование (JSON)',
         'Опыт работы (JSON)', 'Проекты (JSON)', 'Технические навыки',
         'Soft skills', 'Достижения', 'Языки', 'Интересы',
         'Текст вакансии', 'Ключевые слова (JSON)', 'Выбранный шаблон',
@@ -48,7 +49,7 @@ class Database:
             self.users_sheet = self.spreadsheet.worksheet('Users')
         except:
             self.users_sheet = self.spreadsheet.add_worksheet(
-                title='Users', rows=1000, cols=25
+                title='Users', rows=1000, cols=30
             )
             # ИСПРАВЛЕНИЕ: правильные заголовки
             self.users_sheet.append_row(self.USERS_HEADERS)
@@ -114,6 +115,7 @@ class Database:
             # Сериализуем сложные структуры
             experiences_json = json.dumps(data.get('experiences', []), ensure_ascii=False)
             projects_json = json.dumps(data.get('projects', []), ensure_ascii=False)
+            educations_json = json.dumps(data.get('educations', []), ensure_ascii=False)
             keywords_json = json.dumps(data.get('vacancy_keywords', {}), ensure_ascii=False)
             feedback_json = json.dumps(data.get('feedback', {}), ensure_ascii=False)
 
@@ -131,6 +133,7 @@ class Database:
                 data.get('university', ''),
                 data.get('degree', ''),
                 data.get('study_period', ''),
+                educations_json,
                 experiences_json,
                 projects_json,
                 data.get('technical_skills', ''),
@@ -174,6 +177,18 @@ class Database:
                         data['experiences'] = json.loads(data['Опыт работы (JSON)'])
                     except:
                         data['experiences'] = []
+
+                if 'Образование (JSON)' in data and data['Образование (JSON)']:
+                    try:
+                        data['educations'] = json.loads(data['Образование (JSON)'])
+                    except:
+                        data['educations'] = []
+                elif data.get('Университет') or data.get('Специальность') or data.get('Период обучения'):
+                    data['educations'] = [{
+                        'university': data.get('Университет', ''),
+                        'degree': data.get('Специальность', ''),
+                        'study_period': data.get('Период обучения', '')
+                    }]
 
                 if 'Проекты (JSON)' in data and data['Проекты (JSON)']:
                     try:
