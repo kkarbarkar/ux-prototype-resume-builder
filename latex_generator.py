@@ -345,7 +345,7 @@ class LaTeXGenerator:
                 for kw in keywords['technical']:
                     tech_escaped = tech_escaped.replace(
                         self._escape_latex(kw),
-                        r'\textcolor{blue}{' + self._escape_latex(kw) + '}'
+                        r'\textbf{' + self._escape_latex(kw) + '}'
                     )
             section += r"""     \textbf{Технические навыки}{: """ + tech_escaped + r"""} \\
 """
@@ -416,7 +416,7 @@ class LaTeXGenerator:
             if escaped_kw in text:
                 text = text.replace(
                     escaped_kw,
-                    r'\textcolor{blue}{' + escaped_kw + '}',
+                    r'\textbf{' + escaped_kw + '}',
                     1
                 )
 

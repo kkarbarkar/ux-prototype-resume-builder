@@ -14,7 +14,7 @@ class Database:
         'Образование (JSON)',
         'Опыт работы (JSON)', 'Проекты (JSON)', 'Технические навыки',
         'Soft skills', 'Достижения', 'Языки', 'Интересы',
-        'Текст вакансии', 'Ключевые слова (JSON)', 'Выбранный шаблон',
+        'Текст вакансии', 'Ссылка на вакансию', 'Ключевые слова (JSON)', 'Выбранный шаблон',
         'Дата создания резюме', 'Статус', 'Feedback (JSON)'
     ]
     FEEDBACK_HEADERS = [
@@ -149,6 +149,7 @@ class Database:
             data.get('languages', ''),
             data.get('interests', ''),
             data.get('vacancy_text', ''),
+            data.get('vacancy_url', ''),
             keywords_json,
             data.get('template', ''),
             data.get('resume_date', ''),

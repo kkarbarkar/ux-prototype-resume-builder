@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -18,6 +19,10 @@ import socketserver
 import os
 import threading
 import time
+import re
+import html
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 # Логирование
 logging.basicConfig(
@@ -35,6 +40,8 @@ db = Database()
 latex_gen = LaTeXGenerator()
 ai = AIAnalyzer()
 kb = Keyboards()
+AI_REWRITE_FIELDS = {'responsibilities', 'project_description', 'achievements', 'interests'}
+URL_PATTERN = re.compile(r'https?://[^\s<>"\]\)]+', re.IGNORECASE)
 
 # Хранилище данных
 user_sessions = {}
@@ -73,6 +80,7 @@ def get_user_session(user_id):
                 'Языки': 'languages',
                 'Интересы': 'interests',
                 'Текст вакансии': 'vacancy_text',
+                'Ссылка на вакансию': 'vacancy_url',
                 'Выбранный шаблон': 'template',
                 'Дата создания резюме': 'resume_date',
                 'Статус': 'status'
@@ -101,12 +109,69 @@ def get_user_session(user_id):
 def _items_key(section_key):
     return section_key if section_key.endswith('s') else section_key + 's'
 
+
+def _extract_first_url(text):
+    if not text:
+        return None
+    match = URL_PATTERN.search(text)
+    return match.group(0) if match else None
+
+
+def _html_to_text(raw_html):
+    if not raw_html:
+        return ''
+
+    cleaned = re.sub(r'(?is)<(script|style|noscript|svg).*?>.*?</\1>', ' ', raw_html)
+    title_match = re.search(r'(?is)<title[^>]*>(.*?)</title>', raw_html)
+    title = html.unescape(title_match.group(1)).strip() if title_match else ''
+    body_text = re.sub(r'(?is)<[^>]+>', ' ', cleaned)
+    body_text = html.unescape(body_text)
+    body_text = re.sub(r'\s+', ' ', body_text).strip()
+
+    if title and title.lower() not in body_text.lower():
+        return f"{title}\n{body_text}"
+    return body_text
+
+
+def _fetch_vacancy_text_from_url(url, timeout=15):
+    try:
+        request = Request(
+            url,
+            headers={
+                'User-Agent': (
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/123.0.0.0 Safari/537.36'
+                ),
+                'Accept-Language': 'ru,en;q=0.9'
+            }
+        )
+        with urlopen(request, timeout=timeout) as response:
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'text/html' not in content_type and 'application/xhtml+xml' not in content_type:
+                return '', f'Неподдерживаемый формат страницы: {content_type or "unknown"}'
+
+            raw_bytes = response.read(2_000_000)
+            charset = response.headers.get_content_charset() or 'utf-8'
+            raw_html = raw_bytes.decode(charset, errors='ignore')
+            extracted = _html_to_text(raw_html)
+            if len(extracted) < 200:
+                return '', 'На странице слишком мало текста для анализа'
+
+            return extracted[:30000], ''
+    except HTTPError as e:
+        return '', f'HTTP {e.code}'
+    except URLError as e:
+        return '', f'Ошибка сети: {e.reason}'
+    except Exception as e:
+        return '', str(e)
+
 def _reset_resume_data(session):
     keys = [
         'full_name', 'email', 'phone', 'location', 'linkedin', 'github', 'gitlab', 'portfolio',
         'university', 'degree', 'study_period', 'educations', 'experiences', 'projects',
         'technical_skills', 'soft_skills', 'achievements', 'languages', 'interests',
-        'vacancy_text', 'vacancy_keywords', 'template', 'template_id', 'status',
+        'vacancy_text', 'vacancy_url', 'vacancy_keywords', 'template', 'template_id', 'status',
         'resume_date', 'current_item'
     ]
     for key in keys:
@@ -264,7 +329,7 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
         await query.message.reply_document(
             document=latex_file,
             filename=f"Resume_{session.get('full_name', 'User').replace(' ', '_')}.tex",
-            caption=f"<b>📄 Твое резюме</b>\n\n<i>Причина .tex: {error}</i>",
+            caption="<b>📄 Твое резюме</b>\n\n<i>Отправляю в формате .tex</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=kb.main_menu()
         )
@@ -404,6 +469,24 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
     questions = section['questions']
 
     if question_idx >= len(questions):
+        # В режиме редактирования выходим сразу после текущего раздела
+        if session.get('editing_mode'):
+            session['editing_mode'] = False
+            session['editing_section_id'] = None
+            session['editing_item_index'] = None
+            if update.callback_query:
+                await update.callback_query.message.reply_text(
+                    "✅ <b>Раздел обновлен!</b>",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await update.message.reply_text(
+                    "✅ <b>Раздел обновлен!</b>",
+                    parse_mode=ParseMode.HTML
+                )
+            await show_sections_editor(update, context)
+            return
+
         # Проверяем, нужно ли добавить еще элементов (для опыта/проектов)
         if section.get('multiple'):
             keyboard = kb.add_more_back()
@@ -491,6 +574,16 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     question = questions[question_idx]
 
     # Сохраняем ответ
+    rewrite_applied = False
+    if question['key'] in AI_REWRITE_FIELDS and text and text.strip():
+        try:
+            improved_text = ai.improve_user_text(text, question['key'])
+            if improved_text and improved_text.strip():
+                rewrite_applied = improved_text.strip() != text.strip()
+                text = improved_text
+        except Exception as e:
+            logger.warning("⚠️ AI переформулировка недоступна для %s: %s", question['key'], e)
+
     if section.get('multiple'):
         current_item = session.get('current_item', {})
         current_item[question['key']] = text
@@ -512,6 +605,11 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
             session['editing_mode'] = False
             session['editing_section_id'] = None
             session['editing_item_index'] = None
+            if rewrite_applied:
+                await update.message.reply_text(
+                    "✍️ <i>Улучшили формулировку для резюме.</i>",
+                    parse_mode=ParseMode.HTML
+                )
             await update.message.reply_text(
                 "✅ <b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
@@ -544,6 +642,11 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
             session['editing_section_id'] = None
             session['editing_item_index'] = None
 
+            if rewrite_applied:
+                await update.message.reply_text(
+                    "✍️ <i>Улучшили формулировку для резюме.</i>",
+                    parse_mode=ParseMode.HTML
+                )
             await update.message.reply_text(
                 "✅ <b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
@@ -681,6 +784,23 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await clear_reply_markup_from_query(query)
 
+    # В режиме редактирования запрещаем переход по обычному сценарю опроса.
+    if session.get('editing_mode'):
+        session['editing_mode'] = False
+        session['editing_section_id'] = None
+        session['editing_item_index'] = None
+        if query:
+            await query.message.reply_text(
+                "✅ <b>Раздел обновлен!</b>",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                "✅ <b>Раздел обновлен!</b>",
+                parse_mode=ParseMode.HTML
+            )
+        return await show_sections_editor(update, context)
+
     # ИСПРАВЛЕНИЕ: правильное сохранение последнего элемента
     if session.get('current_item'):
         section_key = session['current_section']
@@ -720,9 +840,7 @@ async def request_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = """<b>✅ Отлично! Базовая информация собрана</b>
 
-📋 Теперь пришли мне <b>текст вакансии</b>, на которую хочешь откликнуться.
-
-Просто скопируй описание вакансии с сайта (HH, LinkedIn и т.д.) и отправь сюда.
+📋 Теперь пришли мне <b>текст или ссылку на вакансию</b>, на которую хочешь откликнуться.
 
 🤖 Я проанализирую требования с помощью AI и выделю ключевые слова для твоего резюме!"""
 
@@ -738,15 +856,37 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текста вакансии"""
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
-    vacancy_text = update.message.text
+    vacancy_input = (update.message.text or '').strip()
+    vacancy_text = vacancy_input
+    vacancy_url = _extract_first_url(vacancy_input)
 
-    session['vacancy_text'] = vacancy_text
     session['waiting_for'] = None
 
     analyzing_msg = await update.message.reply_text(
-        "🔍 <b>Анализирую вакансию...</b>",
+        "⏳ <b>Пожалуйста, подождите, анализирую вакансию...</b>",
         parse_mode=ParseMode.HTML
     )
+
+    session['vacancy_url'] = vacancy_url or ''
+
+    if vacancy_url:
+        extracted_text, _fetch_error = await asyncio.to_thread(_fetch_vacancy_text_from_url, vacancy_url)
+        if not extracted_text:
+            try:
+                await analyzing_msg.delete()
+            except Exception:
+                pass
+            session['waiting_for'] = 'vacancy'
+            await update.message.reply_text(
+                "⚠️ Не удалось получить описание по ссылке.\n\n"
+                "Пришли, пожалуйста, текст вакансии сообщением.",
+                parse_mode=ParseMode.HTML
+            )
+            return VACANCY_INPUT
+
+        vacancy_text = extracted_text
+
+    session['vacancy_text'] = vacancy_text
 
     # ТЕСТ: Проверяем работает ли Gemini
     logger.info(f"🔍 Starting vacancy analysis")
@@ -764,10 +904,6 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await analyzing_msg.delete()
         logger.error(f"❌ AI analysis error: {e}")
-        await update.message.reply_text(
-            f"⚠️ Ошибка AI: {str(e)[:100]}\n\nИспользуем упрощенный анализ.",
-            parse_mode=ParseMode.HTML
-        )
         # Используем fallback
         keywords = ai._fallback_extraction(vacancy_text)
         session['vacancy_keywords'] = keywords
@@ -1027,14 +1163,14 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         latex_code = latex_gen.generate_resume(session, session.get('vacancy_keywords'))
         latex_file = io.BytesIO(latex_code.encode('utf-8'))
 
-        caption = f"""<b>Твое резюме готово!</b>
+        caption = """<b>Твое резюме готово!</b>
 
 <b>Как получить PDF:</b>
 1. Открой файл в Overleaf (overleaf.com)
 2. Нажми Recompile
 3. Скачай PDF
 
-<i>Причина .tex формата: {error or 'PDF компилятор недоступен'}</i>"""
+<i>Отправляю в формате .tex</i>"""
 
         await query.message.reply_document(
             document=latex_file,

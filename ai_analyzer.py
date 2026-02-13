@@ -76,6 +76,70 @@ class AIAnalyzer:
         else:
             return self._fallback_extraction(vacancy_text)
 
+    def improve_user_text(self, text, field_key=''):
+        """Переформулировка пользовательского текста для резюме без выдумывания фактов"""
+        raw_text = (text or '').strip()
+        if not raw_text:
+            return text
+
+        if not self.model:
+            return self._fallback_rephrase(raw_text, field_key)
+
+        prompt = f"""Ты — редактор резюме. Улучши формулировку текста для раздела "{field_key}".
+
+Правила:
+- Не выдумывай факты, цифры, компании и технологии.
+- Сохрани исходный язык (русский/английский).
+- Сделай формулировки короче, профессиональнее и конкретнее.
+- Если в тексте несколько строк, верни несколько строк в том же формате.
+- Верни только итоговый текст без пояснений.
+
+Текст:
+{raw_text}"""
+
+        attempts = max(1, len(self.model_candidates))
+        last_error = None
+        for _ in range(attempts):
+            try:
+                response = self.model.generate_content(prompt)
+                rewritten = (getattr(response, 'text', None) or '').strip()
+                if rewritten:
+                    return rewritten
+                return self._fallback_rephrase(raw_text, field_key)
+            except Exception as e:
+                last_error = e
+                if self._should_rotate_model(str(e)) and self._rotate_model(disable_current=True):
+                    continue
+                break
+
+        if last_error:
+            self.logger.warning("⚠️ Не удалось переформулировать текст через Gemini: %s", last_error)
+        return self._fallback_rephrase(raw_text, field_key)
+
+    def _fallback_rephrase(self, text, field_key=''):
+        """Простая переформулировка без AI"""
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        if not lines:
+            return text
+
+        if field_key in {'responsibilities', 'project_description', 'achievements'}:
+            normalized = []
+            for line in lines:
+                cleaned = line.lstrip('-•').strip()
+                if not cleaned:
+                    continue
+                if cleaned[-1] in '.;,':
+                    cleaned = cleaned[:-1]
+                if cleaned and cleaned[0].islower():
+                    cleaned = cleaned[0].upper() + cleaned[1:]
+                normalized.append(cleaned)
+            return '\n'.join(normalized) if normalized else text
+
+        cleaned = ' '.join(lines).strip()
+        if cleaned and cleaned[0].islower():
+            cleaned = cleaned[0].upper() + cleaned[1:]
+        return cleaned or text
+
     def _gemini_extraction(self, vacancy_text):
         """Извлечение с помощью Gemini"""
         prompt = f"""Проанализируй текст вакансии и ТОЧНО выдели упомянутые технологии и навыки.
