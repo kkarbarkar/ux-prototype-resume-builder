@@ -9,7 +9,6 @@ class LaTeXGenerator:
         self.template = self._get_template()
 
     def _get_template(self):
-        """Базовый шаблон LaTeX (Jake's Resume)"""
         return r"""\documentclass[letterpaper,11pt]{article}
 
     \usepackage{latexsym}
@@ -101,24 +100,18 @@ class LaTeXGenerator:
     """
 
     def generate_resume(self, user_data, keywords=None):
-        """Генерация LaTeX кода резюме"""
         latex_content = self.template
-
-        # Личная информация
         latex_content = latex_content.replace('{FULL_NAME}', self._escape_latex(user_data.get('full_name', 'Ваше Имя')))
         email = user_data.get('email', 'email@example.com')
         phone = user_data.get('phone', '+7 999 999-99-99')
         latex_content = latex_content.replace('{EMAIL}', self._escape_latex(email))
         latex_content = latex_content.replace('{PHONE}', self._escape_latex(phone))
-
-        # Локация
         location = user_data.get('location', '')
         if location:
             latex_content = latex_content.replace('{LOCATION_PIPE}', f' $|$ {self._escape_latex(location)}')
         else:
             latex_content = latex_content.replace('{LOCATION_PIPE}', '')
 
-        # Ссылки (LinkedIn, GitHub, GitLab, Portfolio) - в одну строку
         links = []
         if user_data.get('linkedin'):
             linkedin = user_data.get('linkedin').replace('https://', '').replace('http://', '')
@@ -138,7 +131,6 @@ class LaTeXGenerator:
         else:
             latex_content = latex_content.replace('{LINKS}', '')
 
-        # Остальные секции...
         education = self._generate_education(user_data)
         latex_content = latex_content.replace('{EDUCATION_SECTION}', education)
 
@@ -163,19 +155,15 @@ class LaTeXGenerator:
         return latex_content
 
     def generate_pdf(self, user_data, keywords=None):
-        """Генерация PDF резюме"""
         latex_content = self.generate_resume(user_data, keywords)
 
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 tex_file = os.path.join(tmpdir, 'resume.tex')
                 pdf_file = os.path.join(tmpdir, 'resume.pdf')
-
-                # Записываем LaTeX
                 with open(tex_file, 'w', encoding='utf-8') as f:
                     f.write(latex_content)
 
-                # Компилируем в PDF
                 try:
                     env = os.environ.copy()
                     env['TEXMFHOME'] = tmpdir
@@ -221,7 +209,6 @@ class LaTeXGenerator:
             return None, f"Ошибка создания PDF: {str(e)}"
 
     def _escape_latex(self, text):
-        """Экранирование специальных символов LaTeX"""
         if not text:
             return ''
         replacements = {
@@ -240,10 +227,8 @@ class LaTeXGenerator:
         return text
 
     def _generate_education(self, data):
-        """Генерация секции образования"""
         educations = data.get('educations', [])
         if not educations:
-            # Backward compatibility for old single-education payloads.
             if data.get('university'):
                 educations = [{
                     'university': data.get('university', ''),
@@ -273,7 +258,6 @@ class LaTeXGenerator:
         return section
 
     def _generate_interests(self, data):
-        """Генерация секции интересов"""
         interests = data.get('interests', '')
         if not interests:
             return ''
@@ -289,7 +273,6 @@ class LaTeXGenerator:
         return section
 
     def _generate_projects(self, data, keywords):
-        """Генерация секции проектов"""
         projects = data.get('projects', [])
         if not projects:
             return ''
@@ -327,7 +310,6 @@ class LaTeXGenerator:
         return section
 
     def _generate_skills(self, data, keywords):
-        """Генерация секции навыков"""
         tech_skills = data.get('technical_skills', '')
         soft_skills = data.get('soft_skills', '')
 
@@ -361,7 +343,6 @@ class LaTeXGenerator:
         return section
 
     def _generate_achievements(self, data):
-        """Генерация секции достижений"""
         achievements = data.get('achievements', '')
         if not achievements:
             return ''
@@ -385,7 +366,6 @@ class LaTeXGenerator:
         return section
 
     def _generate_languages(self, data):
-        """Генерация секции языков"""
         languages = data.get('languages', '')
         if not languages:
             return ''
@@ -401,7 +381,6 @@ class LaTeXGenerator:
         return section
 
     def _highlight_keywords(self, text, keywords):
-        """Подсветка ключевых слов"""
         if not keywords:
             return text
 
@@ -423,7 +402,6 @@ class LaTeXGenerator:
         return text
 
     def _generate_experience(self, data, keywords):
-        """Генерация секции опыта работы"""
         experiences = data.get('experiences', [])
         if not experiences:
             return ''
@@ -439,7 +417,6 @@ class LaTeXGenerator:
       {""" + self._escape_latex(exp.get('company', '')) + r"""}{}
       \resumeItemListStart
 """
-            # Разбиваем responsibilities на пункты
             resp_text = exp.get('responsibilities', '')
             responsibilities = [r.strip() for r in resp_text.split('\n') if r.strip()]
 
@@ -448,7 +425,6 @@ class LaTeXGenerator:
                 if not resp_clean:
                     continue
                 resp_escaped = self._escape_latex(resp_clean)
-                # Подсвечиваем ключевые слова
                 if keywords:
                     resp_escaped = self._highlight_keywords(resp_escaped, keywords)
                 section += r"""        \resumeItem{""" + resp_escaped + r"""}

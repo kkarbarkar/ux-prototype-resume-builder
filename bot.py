@@ -24,18 +24,15 @@ import html
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-# Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Состояния
 (COLLECTING_DATA, VACANCY_INPUT, TEMPLATE_SELECT,
  EDIT_SECTIONS, FEEDBACK_COLLECT, MENU) = range(6)
 
-# Инициализация
 db = Database()
 latex_gen = LaTeXGenerator()
 ai = AIAnalyzer()
@@ -43,12 +40,10 @@ kb = Keyboards()
 AI_REWRITE_FIELDS = {'responsibilities', 'project_description', 'achievements', 'interests'}
 URL_PATTERN = re.compile(r'https?://[^\s<>"\]\)]+', re.IGNORECASE)
 
-# Хранилище данных
 user_sessions = {}
 
 
 def get_user_session(user_id):
-    """Получить или создать сессию пользователя"""
     if user_id not in user_sessions:
         user_sessions[user_id] = {
             'registration_date': datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -216,9 +211,8 @@ async def safe_answer_callback_query(query):
     try:
         await query.answer()
     except BadRequest as exc:
-        # Typical for very old/duplicated callback presses.
         if "query is too old" not in str(exc).lower() and "query_id_invalid" not in str(exc).lower():
-            logger.warning("⚠️ Ошибка answerCallbackQuery: %s", exc)
+            logger.warning("Ошибка answerCallbackQuery: %s", exc)
 
 
 def is_fast_duplicate_click(session, query):
@@ -238,9 +232,9 @@ async def clear_reply_markup_from_query(query):
         await query.edit_message_reply_markup(reply_markup=None)
     except BadRequest as exc:
         if not _is_ignorable_reply_markup_error(exc):
-            logger.warning("⚠️ Не удалось снять клавиатуру: %s", exc)
+            logger.warning("Не удалось снять клавиатуру: %s", exc)
     except Exception as exc:
-        logger.warning("⚠️ Неожиданная ошибка при снятии клавиатуры: %s", exc)
+        logger.warning("Неожиданная ошибка при снятии клавиатуры: %s", exc)
 
 
 async def clear_reply_markup_by_message(context, chat_id, message_id):
@@ -254,18 +248,15 @@ async def clear_reply_markup_by_message(context, chat_id, message_id):
         )
     except BadRequest as exc:
         if not _is_ignorable_reply_markup_error(exc):
-            logger.warning("⚠️ Не удалось снять клавиатуру у сообщения %s: %s", message_id, exc)
+            logger.warning("Не удалось снять клавиатуру у сообщения %s: %s", message_id, exc)
     except Exception as exc:
-        logger.warning("⚠️ Неожиданная ошибка при снятии клавиатуры у сообщения %s: %s", message_id, exc)
+        logger.warning("Неожиданная ошибка при снятии клавиатуры у сообщения %s: %s", message_id, exc)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало работы"""
     user = update.effective_user
     session = get_user_session(user.id)
     session['username'] = user.username
-
-    # Сбрасываем режим редактирования если был
     session['editing_mode'] = False
     session['editing_section_id'] = None
 
@@ -274,16 +265,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Я помогу тебе создать профессиональное резюме, адаптированное под конкретную вакансию.
 
 <b>🎯 Как это работает:</b>
-1️⃣ Ответишь на вопросы о себе (10-15 мин)
-2️⃣ Пришлешь текст вакансии
-3️⃣ Получишь готовое резюме в PDF
+1. Ответишь на вопросы о себе (10-15 мин)
+2. Пришлешь текст вакансии
+3. Получишь готовое резюме в PDF
 
 <b>✨ Особенности:</b>
 - Анализ вакансии и выделение ключевых требований
 - Автоматическая подсветка важных навыков
 - Возможность редактировать разделы
 
-Готов начать? 🚀"""
+Готов начать? """
 
     await update.message.reply_text(
         welcome,
@@ -294,7 +285,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume_idx):
-    """Просмотр конкретного резюме"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
@@ -305,8 +295,6 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
         "⏳ <b>Генерирую резюме...</b>\nЭто займет до 2 минут.",
         parse_mode=ParseMode.HTML
     )
-
-    # Генерируем PDF заново
     pdf_data, error = latex_gen.generate_pdf(session, session.get('vacancy_keywords'))
 
     if pdf_data:
@@ -322,7 +310,6 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
             reply_markup=kb.main_menu()
         )
     else:
-        # .tex файл
         latex_code = latex_gen.generate_resume(session, session.get('vacancy_keywords'))
         latex_file = io.BytesIO(latex_code.encode('utf-8'))
 
@@ -338,7 +325,6 @@ async def view_resume(update: Update, context: ContextTypes.DEFAULT_TYPE, resume
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка нажатий кнопок"""
     query = update.callback_query
     await safe_answer_callback_query(query)
 
@@ -348,8 +334,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     data = query.data
-
-    # Главное меню
     if data == 'new_resume':
         return await start_collection(update, context)
     elif data == 'my_resumes':
@@ -392,7 +376,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await clear_reply_markup_from_query(query)
         return await finish_feedback(update, context)
 
-    # Навигация
     elif data == 'back':
         return await go_back(update, context)
     elif data == 'skip':
@@ -402,7 +385,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'add_more':
         return await add_more_items(update, context)
 
-    # Ответы
     elif data.startswith('answer_'):
         return await process_answer(update, context, data.split('_')[1])
     elif data.startswith('edit_'):
@@ -414,7 +396,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'finalize':
         return await finalize_resume(update, context)
 
-    # Feedback
     elif data.startswith('rating_'):
         return await save_rating(update, context, data.split('_')[1])
     elif data.startswith('time_'):
@@ -424,15 +405,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало сбора данных"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки главного меню
     await clear_reply_markup_from_query(query)
-
-    # Сбрасываем состояние
     _reset_resume_data(session)
     session['current_section'] = 'personal'
     session['current_question'] = 0
@@ -440,17 +416,14 @@ async def start_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "<b>📝 Отлично! Начнем заполнение данных</b>\n\n"
     msg += "Ты можешь в любой момент вернуться назад с помощью кнопки Назад.\n\n"
-    msg += "Поехали! 🚀"
+    msg += "Поехали! "
 
     await query.message.reply_text(msg, parse_mode=ParseMode.HTML)
-
-    # Задаем первый вопрос
     await ask_current_question(update, context)
     return COLLECTING_DATA
 
 
 async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задать текущий вопрос"""
     user_id = update.effective_user.id if update.callback_query else update.message.from_user.id
     session = get_user_session(user_id)
 
@@ -469,25 +442,23 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
     questions = section['questions']
 
     if question_idx >= len(questions):
-        # В режиме редактирования выходим сразу после текущего раздела
         if session.get('editing_mode'):
             session['editing_mode'] = False
             session['editing_section_id'] = None
             session['editing_item_index'] = None
             if update.callback_query:
                 await update.callback_query.message.reply_text(
-                    "✅ <b>Раздел обновлен!</b>",
+                    "<b>Раздел обновлен!</b>",
                     parse_mode=ParseMode.HTML
                 )
             else:
                 await update.message.reply_text(
-                    "✅ <b>Раздел обновлен!</b>",
+                    "<b>Раздел обновлен!</b>",
                     parse_mode=ParseMode.HTML
                 )
             await show_sections_editor(update, context)
             return
 
-        # Проверяем, нужно ли добавить еще элементов (для опыта/проектов)
         if section.get('multiple'):
             keyboard = kb.add_more_back()
             items_key = _items_key(section_key)
@@ -496,7 +467,7 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
             if current_item and any(current_item.values()):
                 items_count += 1
 
-            msg = f"<b>✅ {section['title']}</b>\n\n"
+            msg = f"<b>{section['title']}</b>\n\n"
             if items_count > 0:
                 msg += f"Добавлено записей: <b>{items_count}</b>\n\n"
             msg += "Хочешь добавить еще одну запись?"
@@ -523,9 +494,8 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
     msg += question['text']
 
     if question.get('example'):
-        msg += f"\n\n<i>💡 Пример: {question['example']}</i>"
+        msg += f"\n\n<i>Пример: {question['example']}</i>"
 
-    # Клавиатура - ВСЕГДА показываем кнопки Пропустить/Назад
     keyboard = kb.skip_back()
 
     if update.callback_query:
@@ -544,7 +514,6 @@ async def ask_current_question(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка текстового ответа"""
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
     text = update.message.text
@@ -572,8 +541,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
         return COLLECTING_DATA
 
     question = questions[question_idx]
-
-    # Сохраняем ответ
     rewrite_applied = False
     if question['key'] in AI_REWRITE_FIELDS and text and text.strip():
         try:
@@ -582,7 +549,7 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
                 rewrite_applied = improved_text.strip() != text.strip()
                 text = improved_text
         except Exception as e:
-            logger.warning("⚠️ AI переформулировка недоступна для %s: %s", question['key'], e)
+            logger.warning("AI переформулировка недоступна для %s: %s", question['key'], e)
 
     if section.get('multiple'):
         current_item = session.get('current_item', {})
@@ -591,7 +558,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         session[question['key']] = text
 
-    # История
     if not session.get('editing_mode'):
         session['history'].append({
             'section': section_key,
@@ -599,7 +565,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
             'value': text
         })
 
-    # ИСПРАВЛЕНИЕ: режим редактирования - возврат после завершения ЭТОГО раздела
     if session.get('editing_mode'):
         if section_key == 'additional' and question['key'] == session.get('editing_section_id'):
             session['editing_mode'] = False
@@ -611,16 +576,13 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode=ParseMode.HTML
                 )
             await update.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
+                "<b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
             return await show_sections_editor(update, context)
 
         session['current_question'] += 1
-
-        # Проверяем завершили ли ВСЕ вопросы в редактируемом разделе
         if session['current_question'] >= len(questions):
-            # Сохраняем для multiple разделов
             if section.get('multiple'):
                 items_key = _items_key(section_key)
                 if items_key not in session:
@@ -628,7 +590,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 
                 current_item = session.get('current_item', {})
                 if current_item and any(current_item.values()):
-                    # Заменяем или добавляем
                     if session.get('editing_item_index') is not None:
                         session[items_key][session['editing_item_index']] = current_item
                     else:
@@ -637,7 +598,6 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
                         _sync_primary_education_from_list(session)
                     session['current_item'] = {}
 
-            # ВОЗВРАЩАЕМСЯ К РЕДАКТОРУ
             session['editing_mode'] = False
             session['editing_section_id'] = None
             session['editing_item_index'] = None
@@ -648,16 +608,14 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode=ParseMode.HTML
                 )
             await update.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
+                "<b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
             return await show_sections_editor(update, context)
         else:
-            # Продолжаем вопросы в этом разделе
             await ask_current_question(update, context)
             return COLLECTING_DATA
 
-    # Обычный режим
     session['current_question'] += 1
     await ask_current_question(update, context)
 
@@ -665,18 +623,13 @@ async def process_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пропустить вопрос"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     section_key = session['current_section']
     section = config.QUESTIONS_STRUCTURE.get(section_key)
-
-    # Если пропускаем первый вопрос в education - пропускаем всю секцию
     if section_key == 'education' and session['current_question'] == 0:
         return await next_section(update, context)
 
@@ -691,7 +644,7 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session['editing_section_id'] = None
                 session['editing_item_index'] = None
                 await query.message.reply_text(
-                    "✅ <b>Раздел обновлен!</b>",
+                    "<b>Раздел обновлен!</b>",
                     parse_mode=ParseMode.HTML
                 )
                 return await show_sections_editor(update, context)
@@ -700,12 +653,11 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session['editing_section_id'] = None
             session['editing_item_index'] = None
             await query.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
+                "<b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
             return await show_sections_editor(update, context)
 
-    # Для секций с multiple - переходим к следующей секции при пропуске первого вопроса
     if section and section.get('multiple') and session['current_question'] == 0:
         return await next_section(update, context)
 
@@ -716,12 +668,9 @@ async def skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def go_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вернуться назад"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     if not session.get('history'):
@@ -729,7 +678,6 @@ async def go_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await ask_current_question(update, context)
         return COLLECTING_DATA
 
-    # Восстанавливаем предыдущее состояние
     last_state = session['history'].pop()
     session['current_section'] = last_state['section']
     session['current_question'] = last_state['question']
@@ -741,19 +689,14 @@ async def go_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавить еще элемент (опыт/проект)"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     section_key = session['current_section']
 
     items_key = _items_key(section_key)
-
-    # Сохраняем текущий элемент
     current_item = session.get('current_item', {})
     if current_item and any(current_item.values()):
         if items_key not in session:
@@ -761,7 +704,7 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session[items_key].append(current_item)
         if section_key == 'education':
             _sync_primary_education_from_list(session)
-        logger.info(f"✅ Saved to {items_key}: {current_item}")
+        logger.info(f"Saved to {items_key}: {current_item}")
 
     session['current_item'] = {}
     session['current_question'] = 0
@@ -776,7 +719,6 @@ async def add_more_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переход к следующей секции"""
     query = update.callback_query if update.callback_query else None
     user_id = update.effective_user.id if query else update.message.from_user.id
     session = get_user_session(user_id)
@@ -784,24 +726,22 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await clear_reply_markup_from_query(query)
 
-    # В режиме редактирования запрещаем переход по обычному сценарю опроса.
     if session.get('editing_mode'):
         session['editing_mode'] = False
         session['editing_section_id'] = None
         session['editing_item_index'] = None
         if query:
             await query.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
+                "<b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
         else:
             await update.message.reply_text(
-                "✅ <b>Раздел обновлен!</b>",
+                "<b>Раздел обновлен!</b>",
                 parse_mode=ParseMode.HTML
             )
         return await show_sections_editor(update, context)
 
-    # ИСПРАВЛЕНИЕ: правильное сохранение последнего элемента
     if session.get('current_item'):
         section_key = session['current_section']
         items_key = _items_key(section_key)
@@ -813,7 +753,7 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session[items_key].append(current_item)
             if section_key == 'education':
                 _sync_primary_education_from_list(session)
-            logger.info(f"✅ Saved in next_section to {items_key}: {current_item}")
+            logger.info(f"Saved in next_section to {items_key}: {current_item}")
 
         session['current_item'] = {}
 
@@ -831,14 +771,13 @@ async def next_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def request_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос текста вакансии"""
     query = update.callback_query if update.callback_query else None
     user_id = update.effective_user.id if query else update.message.from_user.id
     session = get_user_session(user_id)
 
     session['waiting_for'] = 'vacancy'
 
-    msg = """<b>✅ Отлично! Базовая информация собрана</b>
+    msg = """<b>Отлично! Базовая информация собрана</b>
 
 📋 Теперь пришли мне <b>текст или ссылку на вакансию</b>, на которую хочешь откликнуться.
 
@@ -853,7 +792,6 @@ async def request_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка текста вакансии"""
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
     vacancy_input = (update.message.text or '').strip()
@@ -878,7 +816,7 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             session['waiting_for'] = 'vacancy'
             await update.message.reply_text(
-                "⚠️ Не удалось получить описание по ссылке.\n\n"
+                "Не удалось получить описание по ссылке.\n\n"
                 "Пришли, пожалуйста, текст вакансии сообщением.",
                 parse_mode=ParseMode.HTML
             )
@@ -887,12 +825,6 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vacancy_text = extracted_text
 
     session['vacancy_text'] = vacancy_text
-
-    # ТЕСТ: Проверяем работает ли Gemini
-    logger.info(f"🔍 Starting vacancy analysis")
-    logger.info(f"✅ AI model available: {ai.model is not None}")
-    logger.info(f"✅ API key configured: {bool(config.GOOGLE_API_KEY)}")
-
     try:
         keywords = ai.extract_keywords_from_vacancy(vacancy_text)
         session['vacancy_keywords'] = keywords
@@ -903,14 +835,12 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(result_msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         await analyzing_msg.delete()
-        logger.error(f"❌ AI analysis error: {e}")
-        # Используем fallback
+        logger.error("Vacancy analysis error: %s", e)
         keywords = ai._fallback_extraction(vacancy_text)
         session['vacancy_keywords'] = keywords
         result_msg = ai.format_keywords_message(keywords)
         await update.message.reply_text(result_msg, parse_mode=ParseMode.HTML)
 
-    # Сразу переходим к редактированию
     session['template'] = 'Современный'
     session['template_id'] = 'modern'
 
@@ -924,20 +854,15 @@ async def process_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Когда все будет готово, нажми "Готово, создать резюме" """
 
     await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
-
-    # Переход к редактированию разделов
     return await show_sections_editor(update, context)
 
 
 async def show_sections_editor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать редактор разделов"""
     query = update.callback_query if update.callback_query else None
     user_id = update.effective_user.id if query else update.message.from_user.id
     session = get_user_session(user_id)
 
     msg = "<b>Редактирование разделов резюме</b>\n\n"
-
-    # Собираем данные для клавиатуры
     def is_filled(value):
         if isinstance(value, list):
             return len(value) > 0
@@ -954,8 +879,6 @@ async def show_sections_editor(update: Update, context: ContextTypes.DEFAULT_TYP
         'languages': is_filled(session.get('languages')),
         'interests': is_filled(session.get('interests'))
     }
-
-    # Показываем какие разделы заполнены
     filled = [name for name, filled in [
         ('Образование', user_sections['education']),
         ('Опыт работы', user_sections['experience']),
@@ -989,14 +912,11 @@ async def show_sections_editor(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_id):
-    """Редактирование раздела"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
 
     await clear_reply_markup_from_query(query)
-
-    # Показываем текущие данные с деталями
     current_data = []
     if section_id == 'education':
         educations = session.get('educations', [])
@@ -1017,7 +937,7 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
             current_data.append(f"   {resp}...")
     elif section_id == 'projects':
         for i, proj in enumerate(session.get('projects', []), 1):
-            current_data.append(f"\n{i}. 🚀 {proj.get('project_name')}")
+            current_data.append(f"\n{i}. {proj.get('project_name')}")
             desc = proj.get('project_description', '')[:100]
             current_data.append(f"   {desc}...")
     elif section_id == 'skills':
@@ -1041,11 +961,9 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
         msg += "\n".join(current_data)
         msg += "\n\n"
     msg += "<i>Отправь новые данные для замены или нажми Пропустить для сохранения текущих</i>"
-
-    # ИСПРАВЛЕНИЕ: специальный режим для редактирования ТОЛЬКО этого раздела
     session['editing_mode'] = True
     session['editing_section_id'] = section_id
-    session['editing_complete_after'] = section_id  # НОВОЕ: отметка что закончить после этого раздела
+    session['editing_complete_after'] = section_id
 
     section_map = {
         'education': ('education', 0),
@@ -1063,7 +981,6 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
         session['current_question'] = question_offset
         session['current_item'] = {}
         if section_key == 'education':
-            # Editing education means re-entering the whole section from scratch.
             session['educations'] = []
             _sync_primary_education_from_list(session)
 
@@ -1082,15 +999,10 @@ async def edit_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
 
 
 async def delete_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_id):
-    """Удаление раздела"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
-
-    # Очищаем данные раздела
     section_keys_map = {
         'education': ['university', 'degree', 'study_period', 'educations', 'gpa'],
         'experience': ['experiences'],
@@ -1117,39 +1029,31 @@ async def delete_section(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
 
 
 async def add_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_id):
-    """Добавление раздела"""
     return await edit_section(update, context, section_id)
 
 
 async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Финализация и создание резюме"""
     query = update.callback_query
     user_id = update.effective_user.id
     username = update.effective_user.username
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     creating_msg = await query.message.reply_text(
         "⏳ <b>Создаю твое резюме...</b>\nЭто займет до 2 минут.",
         parse_mode=ParseMode.HTML
     )
-
-    # Сохраняем в Google Sheets
     session['status'] = 'completed'
     session['resume_date'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     save_ok = db.save_user_data(user_id, username, session)
     if not save_ok:
-        logger.warning("⚠️ Не удалось сохранить данные пользователя %s перед генерацией", user_id)
+        logger.warning("Не удалось сохранить данные пользователя %s перед генерацией", user_id)
 
-    # Генерируем PDF
     pdf_data, error = latex_gen.generate_pdf(session, session.get('vacancy_keywords'))
 
     await creating_msg.delete()
 
     if pdf_data:
-        # Отправляем PDF
         caption = "<b>Твое резюме готово!</b>"
 
         await query.message.reply_document(
@@ -1159,7 +1063,6 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
     else:
-        # Если PDF не создался, отправляем .tex файл
         latex_code = latex_gen.generate_resume(session, session.get('vacancy_keywords'))
         latex_file = io.BytesIO(latex_code.encode('utf-8'))
 
@@ -1179,7 +1082,6 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-    # Сохраняем резюме в сессию для "Мои резюме"
     if 'resumes' not in session:
         session['resumes'] = []
     session['resumes'].append({
@@ -1195,12 +1097,10 @@ async def finalize_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         db.save_user_data(user_id, username, session)
 
-    # Запускаем сбор feedback
     return await start_feedback(update, context)
 
 
 async def start_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало сбора обратной связи"""
     query = update.callback_query if update.callback_query else None
     user_id = update.effective_user.id if query else update.message.from_user.id
     session = get_user_session(user_id)
@@ -1224,14 +1124,12 @@ async def start_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ask_feedback_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Задать вопрос обратной связи"""
     user_id = update.effective_user.id if update.callback_query else update.message.from_user.id
     session = get_user_session(user_id)
 
     idx = session.get('feedback_question', 0)
 
     if idx >= len(config.FEEDBACK_QUESTIONS):
-        # Последний вопрос - запрашиваем комментарий
         if not session['feedback'].get('comment_requested'):
             session['feedback']['comment_requested'] = True
             msg = "<b>Хочешь оставить комментарий?</b>\n\n"
@@ -1280,12 +1178,9 @@ async def ask_feedback_question(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def save_rating(update: Update, context: ContextTypes.DEFAULT_TYPE, rating):
-    """Сохранить оценку"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     idx = session.get('feedback_question', 0)
@@ -1301,12 +1196,9 @@ async def save_rating(update: Update, context: ContextTypes.DEFAULT_TYPE, rating
 
 
 async def save_time(update: Update, context: ContextTypes.DEFAULT_TYPE, time_code):
-    """Сохранить время"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     time_map = {
@@ -1329,12 +1221,9 @@ async def save_time(update: Update, context: ContextTypes.DEFAULT_TYPE, time_cod
 
 
 async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, answer):
-    """Обработка ответа да/нет"""
     query = update.callback_query
     user_id = update.effective_user.id
     session = get_user_session(user_id)
-
-    # Деактивируем кнопки
     await clear_reply_markup_from_query(query)
 
     idx = session.get('feedback_question', 0)
@@ -1350,12 +1239,9 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, ans
 
 
 async def finish_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Завершение сбора обратной связи"""
     user_id = update.effective_user.id if update.callback_query else update.message.from_user.id
     username = update.effective_user.username if update.callback_query else update.message.from_user.username
     session = get_user_session(user_id)
-
-    # Сохраняем feedback
     db.save_feedback(user_id, username, session.get('feedback', {}))
 
     try:
@@ -1367,7 +1253,7 @@ async def finish_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Твои ответы очень помогут нам улучшить продукт.
 
-Удачи в поиске работы! 🚀"""
+Удачи в поиске работы! """
 
     if update.callback_query:
         await update.callback_query.message.reply_text(
@@ -1386,7 +1272,6 @@ async def finish_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Помощь"""
     help_text = """<b>Помощь по боту</b>
 
 <b>📝 Как пользоваться:</b>
@@ -1426,10 +1311,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена"""
 
     await update.message.reply_text(
-        "❌ Действие отменено. Используй /start для начала",
+        "Действие отменено. Используй /start для начала",
         reply_markup=kb.main_menu(),
         parse_mode=ParseMode.HTML
     )
@@ -1437,26 +1321,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /new"""
 
     user_id = update.effective_user.id
     session = get_user_session(user_id)
     session['username'] = update.effective_user.username
-    # Сбрасываем состояние
     _reset_resume_data(session)
     session['current_section'] = 'personal'
     session['current_question'] = 0
     session['history'] = []
 
-    msg = "<b>📝 Начинаем создание нового резюме!</b>\n\nПоехали! 🚀"
+    msg = "<b>📝 Начинаем создание нового резюме!</b>\n\nПоехали! "
     await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
     await ask_current_question(update, context)
     return COLLECTING_DATA
 
 
-# Обработчик ошибок
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ошибок"""
     logger.error(f"Update {update} caused error {context.error}")
 
     if update and update.effective_message:
@@ -1470,7 +1350,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def process_feedback_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка комментария в feedback"""
     user_id = update.message.from_user.id
     session = get_user_session(user_id)
 
@@ -1483,18 +1362,12 @@ async def process_feedback_comment(update: Update, context: ContextTypes.DEFAULT
 
 
 async def feedback_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /feedback"""
     return await start_feedback(update, context)
 
 
 def main():
-    """Запуск бота"""
     application = Application.builder().token(config.TELEGRAM_TOKEN).build()
-
-    # Добавляем обработчик ошибок
     application.add_error_handler(error_handler)
-
-    # Conversation handler с правильными настройками
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
@@ -1552,7 +1425,7 @@ def main():
     logger.info("🤖 Bot started!")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True  # Игнорируем старые обновления
+        drop_pending_updates=True
     )
 
 

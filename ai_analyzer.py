@@ -2,14 +2,13 @@ import logging
 import os
 import re
 
-# Пытаемся импортировать Google Gemini
 try:
     import google.generativeai as genai
 
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
-    print("⚠️ Google Gemini недоступен - используется fallback анализ")
+    print("Google Gemini недоступен - используется fallback анализ")
 
 import config
 
@@ -58,15 +57,14 @@ class AIAnalyzer:
                     self.model_candidates = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
                 self.model_name = self.model_candidates[0]
                 self.model = genai.GenerativeModel(self.model_name)
-                self.logger.info("✅ Google Gemini подключен: %s", self.model_name)
+                self.logger.info("Google Gemini подключен: %s", self.model_name)
             except Exception as e:
-                self.logger.warning("⚠️ Ошибка подключения Gemini: %s", e)
+                self.logger.warning("Ошибка подключения Gemini: %s", e)
                 self.logger.info("Используется fallback анализ")
         else:
-            self.logger.info("⚠️ Используется fallback анализ вакансий")
+            self.logger.info("Используется fallback анализ вакансий")
 
     def extract_keywords_from_vacancy(self, vacancy_text):
-        """Извлечение ключевых слов из вакансии"""
         if self.model:
             try:
                 return self._gemini_extraction(vacancy_text)
@@ -77,7 +75,6 @@ class AIAnalyzer:
             return self._fallback_extraction(vacancy_text)
 
     def improve_user_text(self, text, field_key=''):
-        """Переформулировка пользовательского текста для резюме без выдумывания фактов"""
         raw_text = (text or '').strip()
         if not raw_text:
             return text
@@ -113,11 +110,10 @@ class AIAnalyzer:
                 break
 
         if last_error:
-            self.logger.warning("⚠️ Не удалось переформулировать текст через Gemini: %s", last_error)
+            self.logger.warning("Не удалось переформулировать текст через Gemini: %s", last_error)
         return self._fallback_rephrase(raw_text, field_key)
 
     def _fallback_rephrase(self, text, field_key=''):
-        """Простая переформулировка без AI"""
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         if not lines:
             return text
@@ -141,10 +137,9 @@ class AIAnalyzer:
         return cleaned or text
 
     def _gemini_extraction(self, vacancy_text):
-        """Извлечение с помощью Gemini"""
         prompt = f"""Проанализируй текст вакансии и ТОЧНО выдели упомянутые технологии и навыки.
 
-ВАЖНО: 
+ВАЖНО:
 - Выписывай ТОЛЬКО те технологии, которые ЯВНО упомянуты в тексте
 - НЕ добавляй технологии, которых нет в тексте
 - Сохраняй точные названия (Rust, C++, PostgreSQL, Clickhouse и т.д.)
@@ -200,7 +195,7 @@ SOFT SKILLS:
                 self.model_index = 0
         self.model_name = self.model_candidates[self.model_index]
         self.model = genai.GenerativeModel(self.model_name)
-        self.logger.warning("🔁 Переключаю модель Gemini на %s", self.model_name)
+        self.logger.warning("Переключаю модель Gemini на %s", self.model_name)
         return True
 
     def _normalize_model_name(self, name):
@@ -210,7 +205,6 @@ SOFT SKILLS:
 
     def _is_supported_model_name(self, name):
         lowered = name.lower()
-        # Aliases with "-latest" are unstable across API versions and often return 404.
         return not lowered.endswith('-latest')
 
     def _get_available_models(self):
@@ -227,11 +221,10 @@ SOFT SKILLS:
                         models.append(name)
             return models
         except Exception as e:
-            self.logger.warning("⚠️ Не удалось получить список моделей Gemini: %s", e)
+            self.logger.warning("Не удалось получить список моделей Gemini: %s", e)
             return []
 
     def _parse_ai_response(self, text, original_vacancy):
-        """Парсинг ответа AI с проверкой"""
         result = {
             'technical': [],
             'soft': [],
@@ -252,78 +245,49 @@ SOFT SKILLS:
                 if skill and self._verify_in_text(skill, original_vacancy):
                     result[current_section].append(skill)
 
-        # Если не распарсилось - используем fallback
         if not any(result.values()):
             return self._fallback_extraction(original_vacancy)
 
         return result
 
     def _verify_in_text(self, skill, text):
-        """Проверка что навык действительно есть в тексте"""
         return skill.lower() in text.lower()
 
     def _fallback_extraction(self, text):
-        """Улучшенная экстракция без AI"""
         text_lower = text.lower()
 
         key_skills = self._extract_key_skills(text)
 
         technical_skills = {
-            # Программирование - ВАЖНО: добавляем варианты написания
             'Python', 'JavaScript', 'Java', 'C++', 'C\\+\\+', 'Cpp', 'C#', 'C Sharp', 'C',
             'TypeScript', 'Go', 'Golang', 'Rust',
             'Ruby', 'PHP', 'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'Dart', 'Lua',
-
-            # Фреймворки
             'React', 'Vue', 'Angular', 'Django', 'Flask', 'FastAPI', 'Spring',
             'Node.js', 'Express', 'Next.js', 'Laravel', 'Rails', 'Tokio', 'Actix',
-
-            # Базы данных
             'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Clickhouse',
             'Kafka', 'RabbitMQ', 'MS SQL', 'MSSQL', 'BigQuery', 'SQL', 'NoSQL',
-
-            # DevOps
             'Docker', 'Kubernetes', 'Git', 'GitLab', 'GitHub', 'Jenkins', 'CI/CD',
             'AWS', 'Azure', 'GCP', 'Terraform', 'Ansible', 'Linux',
-
-            # Python stack
             'pandas', 'numpy', 'requests', 'asyncio',
-
-            # Data/ETL
             'ETL', 'ELT',
-
-            # API
             'API', 'REST', 'REST API',
-
-            # Shell
             'bash',
-
-            # Библиотеки
             'mavsdk', 'opencv', 'OpenCV', 'ardupilot', 'ArduPilot',
             'Raspberry Pi', 'Orange Pi', 'Nvidia Jetson', 'Jetson',
-
-            # Дизайн
             'AutoCAD', 'Photoshop', 'Illustrator', 'Figma', 'Sketch', 'Adobe XD',
-
-            # Другое
             'REST API', 'GraphQL', 'Microservices', 'Machine Learning',
             'нейронные сети', 'нейросети', 'криптография'
         }
-
-        # Специальная обработка для C++
         if 'c++' in text_lower or 'cpp' in text_lower or 'c\\+\\+' in text_lower:
             found_technical = ['C++']
         else:
             found_technical = []
 
-        # Обычный поиск для остальных
         for skill in technical_skills:
             if skill == 'C++' or skill == 'C\\+\\+' or skill == 'Cpp':
-                continue  # Уже обработали выше
+                continue
 
-            # Специальная обработка для однобуквенных (C, R)
             if skill in ['C', 'R']:
-                # Ищем как отдельное слово
                 pattern = r'\b' + re.escape(skill) + r'\b'
                 if re.search(pattern, text, re.IGNORECASE):
                     if skill not in found_technical:
@@ -334,7 +298,6 @@ SOFT SKILLS:
                     if skill not in found_technical:
                         found_technical.append(skill)
 
-        # Soft skills
         soft_skills_list = [
             'коммуникация', 'работа в команде', 'teamwork',
             'лидерство', 'leadership', 'problem solving',
@@ -359,7 +322,6 @@ SOFT SKILLS:
         }
 
     def _extract_key_skills(self, text):
-        """Извлечь ключевые навыки из явного списка"""
         markers = ['ключевые навыки', 'key skills', 'skills']
         lines = text.splitlines()
         start_idx = None
@@ -382,7 +344,6 @@ SOFT SKILLS:
         return list(dict.fromkeys(collected))[:15]
 
     def format_keywords_message(self, keywords_dict):
-        """Форматирование сообщения"""
         msg = "<b>🔍 Анализ вакансии завершен!</b>\n\n"
 
         if keywords_dict.get('technical'):

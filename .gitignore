@@ -19,3 +19,5 @@ credentials.json
 *.log
 *.tmp
 *.temp
+
+local_funnel_*

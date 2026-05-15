@@ -34,7 +34,6 @@ class Database:
             info = json.loads(creds_json)
             creds = ServiceAccountCredentials.from_json_keyfile_dict(info, scope)
         else:
-            # Если переменной нет, ищем файл (для тестов на компе)
             creds = ServiceAccountCredentials.from_json_keyfile_name(
                 config.CREDENTIALS_FILE, scope
             )
@@ -45,14 +44,12 @@ class Database:
 
 
     def _init_sheets(self):
-        """Инициализация листов"""
         try:
             self.users_sheet = self.spreadsheet.worksheet('Users')
         except:
             self.users_sheet = self.spreadsheet.add_worksheet(
                 title='Users', rows=1000, cols=30
             )
-            # ИСПРАВЛЕНИЕ: правильные заголовки
             self.users_sheet.append_row(self.USERS_HEADERS)
 
         try:
@@ -109,7 +106,6 @@ class Database:
             return records
 
     def _column_letter(self, index):
-        """1-based column index to A1 letter notation."""
         letters = ""
         while index > 0:
             index, rem = divmod(index - 1, 26)
@@ -117,8 +113,6 @@ class Database:
         return letters
 
     def save_user_data(self, user_id, username, data):
-        """Сохранение данных пользователя"""
-        # Сериализуем сложные структуры
         experiences_json = json.dumps(data.get('experiences', []), ensure_ascii=False)
         projects_json = json.dumps(data.get('projects', []), ensure_ascii=False)
         educations_json = json.dumps(data.get('educations', []), ensure_ascii=False)
@@ -176,7 +170,6 @@ class Database:
                     return False
 
     def get_user_data(self, user_id):
-        """Получение данных пользователя"""
         try:
             cell = self.users_sheet.find(str(user_id))
             if cell:
@@ -184,8 +177,6 @@ class Database:
                 headers = self.users_sheet.row_values(1)
 
                 data = dict(zip(headers, row))
-
-                # Десериализуем JSON
                 if 'Опыт работы (JSON)' in data and data['Опыт работы (JSON)']:
                     try:
                         data['experiences'] = json.loads(data['Опыт работы (JSON)'])
@@ -223,7 +214,6 @@ class Database:
             return None
 
     def save_feedback(self, user_id, username, feedback_data):
-        """Сохранение обратной связи"""
         try:
             row_data = [
                 user_id,
@@ -238,8 +228,6 @@ class Database:
                 feedback_data.get('conversion_status', 'completed')
             ]
             self.feedback_sheet.append_row(row_data)
-
-            # Также сохраняем в основную таблицу
             user_data = self.get_user_data(user_id)
             if user_data:
                 user_data['feedback'] = feedback_data
@@ -251,18 +239,13 @@ class Database:
             return False
 
     def update_analytics(self):
-        """Обновление аналитики"""
         try:
             all_users = self._get_all_records(self.users_sheet, self.USERS_HEADERS)
 
             total_users = len(all_users)
             completed = len([u for u in all_users if u.get('Статус') == 'completed'])
             conversion = (completed / total_users * 100) if total_users > 0 else 0
-
-            # Получаем feedback
             all_feedback = self._get_all_records(self.feedback_sheet, self.FEEDBACK_HEADERS)
-
-            # Исправление: проверяем тип данных
             ratings = []
             for f in all_feedback:
                 rating_val = f.get('Оценка резюме', '')

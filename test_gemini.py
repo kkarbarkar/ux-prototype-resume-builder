@@ -12,7 +12,7 @@ try:
     model = genai.GenerativeModel('gemini-1.5-flash')
 
     response = model.generate_content("Say hello!")
-    print(f"✅ Gemini works!")
+    print(f"Gemini works!")
     print(f"Response: {response.text}")
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"Error: {e}")

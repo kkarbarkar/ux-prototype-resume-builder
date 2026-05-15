@@ -4,7 +4,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 class Keyboards:
     @staticmethod
     def yes_no_skip():
-        """Да/Нет/Пропустить"""
         keyboard = [
             [InlineKeyboardButton("✅ Да", callback_data="answer_yes")],
             [InlineKeyboardButton("❌ Нет", callback_data="answer_no")],
@@ -14,7 +13,6 @@ class Keyboards:
 
     @staticmethod
     def yes_no():
-        """Да/Нет"""
         keyboard = [
             [InlineKeyboardButton("✅ Да", callback_data="answer_yes")],
             [InlineKeyboardButton("❌ Нет", callback_data="answer_no")]
@@ -23,7 +21,6 @@ class Keyboards:
 
     @staticmethod
     def skip_back():
-        """Пропустить/Назад"""
         keyboard = [
             [InlineKeyboardButton("⏭ Пропустить", callback_data="skip")],
             [InlineKeyboardButton("◀️ Назад", callback_data="back")]
@@ -32,7 +29,6 @@ class Keyboards:
 
     @staticmethod
     def add_more_back():
-        """Добавить еще/Продолжить/Назад"""
         keyboard = [
             [InlineKeyboardButton("➕ Добавить еще", callback_data="add_more")],
             [InlineKeyboardButton("▶️ Продолжить", callback_data="continue")],
@@ -42,7 +38,6 @@ class Keyboards:
 
     @staticmethod
     def sections_edit(user_sections):
-        """Редактирование разделов"""
         keyboard = []
         sections_map = {
             'education': 'Образование',
@@ -56,7 +51,6 @@ class Keyboards:
 
         for section_id, section_name in sections_map.items():
             if section_id in user_sections and user_sections[section_id]:
-                # Раздел заполнен - можно редактировать или удалить
                 keyboard.append([
                     InlineKeyboardButton(
                         f"✏️ {section_name}",
@@ -68,7 +62,6 @@ class Keyboards:
                     )
                 ])
             else:
-                # Раздел пропущен - можно добавить
                 keyboard.append([
                     InlineKeyboardButton(
                         f"➕ {section_name}",
@@ -81,7 +74,6 @@ class Keyboards:
 
     @staticmethod
     def rating(max_rating=5):
-        """Оценка по шкале"""
         keyboard = []
         row = []
         for i in range(1, max_rating + 1):
@@ -91,7 +83,6 @@ class Keyboards:
 
     @staticmethod
     def time_options():
-        """Варианты времени"""
         keyboard = [
             [InlineKeyboardButton("⏱ Менее 15 минут", callback_data="time_15")],
             [InlineKeyboardButton("⏱ 15-30 минут", callback_data="time_30")],
@@ -102,7 +93,6 @@ class Keyboards:
 
     @staticmethod
     def main_menu():
-        """Главное меню"""
         keyboard = [
             [InlineKeyboardButton("🆕 Создать новое резюме", callback_data="new_resume")],
             [InlineKeyboardButton("📄 Мои резюме", callback_data="my_resumes")],
@@ -113,7 +103,6 @@ class Keyboards:
 
     @staticmethod
     def resume_list(resumes):
-        """Список резюме для выбора"""
         keyboard = []
         for idx, resume in enumerate(resumes):
             name = (resume.get('name') or 'Резюме').replace('\n', ' ').strip()

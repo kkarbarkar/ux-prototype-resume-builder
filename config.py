@@ -3,16 +3,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Telegram
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'karbarkarrr')
 
-# Google
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 CREDENTIALS_FILE = 'credentials.json'
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY', '')
 
-# Структурированные вопросы для сбора данных
 QUESTIONS_STRUCTURE = {
     'personal': {
         'title': '👤 Личная информация',
@@ -181,7 +178,6 @@ QUESTIONS_STRUCTURE = {
     }
 }
 
-# Вопросы для обратной связи
 FEEDBACK_QUESTIONS = [
     {
         'key': 'resume_rating',

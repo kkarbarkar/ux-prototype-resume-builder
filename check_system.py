@@ -1,26 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Скрипт проверки работы всех компонентов бота
-"""
 
 import sys
 import os
 
 print("=" * 60)
-print("🔍 ПРОВЕРКА КОМПОНЕНТОВ RESUME BUILDER BOT")
+print("ПРОВЕРКА КОМПОНЕНТОВ RESUME BUILDER BOT")
 print("=" * 60)
 
-# 1. Проверка Python
-print("\n1️⃣ Проверка Python...")
+print("\n1. Проверка Python...")
 print(f"   Python версия: {sys.version}")
 if sys.version_info >= (3, 11):
-    print("   ✅ Python 3.11+ OK")
+    print("   Python 3.11+ OK")
 else:
-    print("   ⚠️  Рекомендуется Python 3.11+")
+    print("   Рекомендуется Python 3.11+")
 
-# 2. Проверка зависимостей
-print("\n2️⃣ Проверка зависимостей...")
+print("\n2. Проверка зависимостей...")
 required_packages = {
     'telegram': 'python-telegram-bot',
     'gspread': 'gspread',
@@ -33,38 +27,36 @@ missing = []
 for module, package in required_packages.items():
     try:
         __import__(module if '.' not in module else module.split('.')[0])
-        print(f"   ✅ {package}")
+        print(f"   {package}")
     except ImportError:
-        print(f"   ❌ {package} - ОТСУТСТВУЕТ")
+        print(f"   {package} - ОТСУТСТВУЕТ")
         missing.append(package)
 
 if missing:
-    print(f"\n   ⚠️  Установи отсутствующие пакеты:")
+    print(f"\n   Установи отсутствующие пакеты:")
     print(f"   pip install {' '.join(missing)}")
 
-# 3. Проверка LaTeX
-print("\n3️⃣ Проверка LaTeX...")
+print("\n3. Проверка LaTeX...")
 import subprocess
 try:
     result = subprocess.run(['pdflatex', '--version'], 
                           capture_output=True, timeout=5)
     if result.returncode == 0:
         version = result.stdout.decode().split('\n')[0]
-        print(f"   ✅ pdflatex установлен: {version}")
+        print(f"   pdflatex установлен: {version}")
     else:
-        print("   ❌ pdflatex НЕ работает")
+        print("   pdflatex НЕ работает")
 except FileNotFoundError:
-    print("   ❌ pdflatex НЕ УСТАНОВЛЕН")
-    print("   ⚠️  PDF генерация недоступна - будут создаваться .tex файлы")
+    print("   pdflatex НЕ УСТАНОВЛЕН")
+    print("   PDF генерация недоступна - будут создаваться .tex файлы")
     print("   Установка:")
     print("   - Ubuntu: sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra texlive-lang-cyrillic")
     print("   - Mac: brew install --cask mactex")
     print("   - Windows: скачай MiKTeX с miktex.org")
 except subprocess.TimeoutExpired:
-    print("   ⚠️  pdflatex timeout")
+    print("   pdflatex timeout")
 
-# 4. Проверка environment variables
-print("\n4️⃣ Проверка environment variables...")
+print("\n4. Проверка environment variables...")
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -79,25 +71,23 @@ for var, desc in env_vars.items():
     value = os.getenv(var)
     if value:
         masked = value[:10] + '...' if len(value) > 10 else value
-        print(f"   ✅ {var}: {masked}")
+        print(f"   {var}: {masked}")
     else:
-        print(f"   ❌ {var}: НЕ УСТАНОВЛЕНА ({desc})")
+        print(f"   {var}: НЕ УСТАНОВЛЕНА ({desc})")
         all_set = False
 
-# Проверка credentials.json
 if os.path.exists('credentials.json'):
-    print(f"   ✅ credentials.json: найден")
+    print(f"   credentials.json: найден")
 elif os.getenv('GOOGLE_CREDENTIALS_JSON'):
-    print(f"   ✅ GOOGLE_CREDENTIALS_JSON: установлена")
+    print(f"   GOOGLE_CREDENTIALS_JSON: установлена")
 else:
-    print(f"   ❌ credentials.json: НЕ НАЙДЕН")
+    print(f"   credentials.json: НЕ НАЙДЕН")
     all_set = False
 
 if not all_set:
-    print("\n   ⚠️  Создай .env файл на основе .env.example")
+    print("\n   Создай .env файл на основе .env.example")
 
-# 5. Проверка файлов проекта
-print("\n5️⃣ Проверка файлов проекта...")
+print("\n5. Проверка файлов проекта...")
 required_files = [
     'bot.py', 'config.py', 'database.py', 
     'ai_analyzer.py', 'latex_generator.py', 'keyboards.py'
@@ -106,34 +96,30 @@ required_files = [
 for file in required_files:
     if os.path.exists(file):
         size = os.path.getsize(file)
-        print(f"   ✅ {file} ({size} bytes)")
+        print(f"   {file} ({size} bytes)")
     else:
-        print(f"   ❌ {file} - ОТСУТСТВУЕТ")
+        print(f"   {file} - ОТСУТСТВУЕТ")
 
-# 6. Тест Google Sheets (если credentials есть)
-print("\n6️⃣ Тест Google Sheets API...")
+print("\n6. Тест Google Sheets API...")
 try:
     import config
     from database import Database
     
     db = Database()
-    print("   ✅ Подключение к Google Sheets успешно")
-    
-    # Пробуем прочитать таблицу
+    print("   Подключение к Google Sheets успешно")
     try:
         sheet_title = db.spreadsheet.title
-        print(f"   ✅ Таблица: {sheet_title}")
+        print(f"   Таблица: {sheet_title}")
         worksheets = [ws.title for ws in db.spreadsheet.worksheets()]
-        print(f"   ✅ Листы: {', '.join(worksheets)}")
+        print(f"   Листы: {', '.join(worksheets)}")
     except Exception as e:
-        print(f"   ⚠️  Ошибка чтения таблицы: {e}")
+        print(f"   Ошибка чтения таблицы: {e}")
         
 except Exception as e:
-    print(f"   ❌ Ошибка подключения: {e}")
+    print(f"   Ошибка подключения: {e}")
     print("   Проверь credentials.json и SPREADSHEET_ID")
 
-# 7. Тест Google Gemini (если API key есть)
-print("\n7️⃣ Тест Google Gemini API...")
+print("\n7. Тест Google Gemini API...")
 try:
     import google.generativeai as genai
     import config
@@ -144,33 +130,32 @@ try:
         
         response = model.generate_content("Say 'OK' if you work")
         if response.text:
-            print(f"   ✅ Gemini API работает: {response.text[:50]}")
+            print(f"   Gemini API работает: {response.text[:50]}")
         else:
-            print("   ⚠️  Gemini API не отвечает")
+            print("   Gemini API не отвечает")
     else:
-        print("   ⚠️  GOOGLE_API_KEY не установлен - будет использован fallback")
+        print("   GOOGLE_API_KEY не установлен - будет использован fallback")
         
 except ImportError:
-    print("   ⚠️  google-generativeai не установлен - будет использован fallback")
+    print("   google-generativeai не установлен - будет использован fallback")
 except Exception as e:
-    print(f"   ❌ Ошибка Gemini API: {e}")
-    print("   ⚠️  Будет использован fallback анализ (regex)")
+    print(f"   Ошибка Gemini API: {e}")
+    print("   Будет использован fallback анализ (regex)")
 
-# Итоговый статус
 print("\n" + "=" * 60)
 print("📊 ИТОГОВЫЙ СТАТУС")
 print("=" * 60)
 
 if not missing and all_set:
-    print("✅ ВСЕ КОМПОНЕНТЫ ГОТОВЫ К РАБОТЕ!")
-    print("\n🚀 Запусти бота: python bot.py")
+    print("ВСЕ КОМПОНЕНТЫ ГОТОВЫ К РАБОТЕ!")
+    print("\nЗапусти бота: python bot.py")
 else:
-    print("⚠️  ТРЕБУЕТСЯ НАСТРОЙКА")
+    print("ТРЕБУЕТСЯ НАСТРОЙКА")
     if missing:
         print(f"\n1. Установи зависимости: pip install {' '.join(missing)}")
     if not all_set:
         print("2. Настрой .env файл (см. .env.example)")
     print("\n После этого запусти: python bot.py")
 
-print("\n💡 Подробнее см. README.md")
+print("\nПодробнее см. README.md")
 print("=" * 60)
